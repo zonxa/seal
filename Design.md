@@ -1,6 +1,8 @@
-[<- Back to Introduction](README.md)
-[Using Seal ->](UsingSeal.md)
-[Seal Beta Terms of Service ->](TermsOfService.md)
+## Table of Contents:
+
+- [Introduction](README.md)
+- [Using Seal](UsingSeal.md)
+- [Seal Beta Terms of Service](TermsOfService.md)
 
 # Seal Design
 
@@ -98,6 +100,4 @@ Post-quantum primitives are planned to be added in the future.
 
 TODO: link to doc with the primitives
 
-[<- Back to Introduction](README.md)
-[Using Seal ->](UsingSeal.md)
-[Seal Beta Terms of Service ->](TermsOfService.md)
+[Back to table of contents](#table-of-contents)
