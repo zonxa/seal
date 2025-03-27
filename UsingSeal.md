@@ -1,6 +1,8 @@
-[<- Back to Introduction](README.md)
-[<- Back to Seal Design](Design.md)
-[Seal Beta Terms of Service ->](TermsOfService.md)
+## Table of Contents:
+
+- [Introduction](README.md)
+- [Seal Design](Design.md)
+- [Seal Beta Terms of Service](TermsOfService.md)
 
 # Using Seal
 
@@ -285,6 +287,4 @@ Decrypted message: 54686520646966666572656e6365206265747765656e2061204d697261636
 ```
 which, as expected, is the same as the original message.
 
-[<- Back to Introduction](README.md)
-[<- Back to Seal Design](Design.md)
-[Seal Beta Terms of Service ->](TermsOfService.md)
+[Back to table of contents](#table-of-contents)

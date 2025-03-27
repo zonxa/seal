@@ -1,6 +1,8 @@
-[<- Back to Introduction](README.md)
-[<- Back to Seal Design](Design.md)
-[<- Back to Using Seal>](UsingSeal.md)
+## Table of Contents:
+
+- [Introduction](README.md)
+- [Seal Design](Design.md)
+- [Using Seal](UsingSeal.md)
 
 # Seal Beta Terms of Service
 
@@ -88,6 +90,4 @@ Any dispute arising out of or relating to these Terms shall be exclusively submi
 
 For inquiries related to these Terms, please contact Mysten Labs at legal@mystenlabs.com.
 
-[<- Back to Introduction](README.md)
-[<- Back to Seal Design](Design.md)
-[<- Back to Using Seal>](UsingSeal.md)
+[Back to table of contents](#table-of-contents)
