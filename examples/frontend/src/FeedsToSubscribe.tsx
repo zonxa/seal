@@ -274,12 +274,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         <p>No files found for this service.</p>
       ) : (
       <Card key={feed!.id}>
-        <Heading size="3">Feeds for service {feed!.name}</Heading>
-        <p>Service ID: {feed!.id}</p>
-        <p>Subscription ID: {feed!.subscriptionId}</p>
-        <p>Fee: {feed!.fee}</p>
-        <p>TTL: {Math.floor(parseInt(feed!.ttl) / 60 / 1000)} minutes</p>
-        <p>Owner: {feed!.owner}</p>
+        <Heading size="3">Files for subscription service {feed!.name} (ID {feed!.id})</Heading>        
         <Flex direction="column" align="start" gap="2">
             {feed!.blobIds.length === 0 ? (
               <p>No feeds found.</p>
@@ -287,7 +282,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
               <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <Dialog.Trigger>
                 <Button onClick={() => onView(feed!.blobIds, feed!.id, Number(feed!.fee), feed!.subscriptionId)}>
-                  {feed!.subscriptionId ? <div>View All Files</div> : <div>Subscribe for {feed!.fee} MIST for {Math.floor(parseInt(feed!.ttl) / 60 / 1000)} minutes</div>}
+                  {feed!.subscriptionId ? <div>Download And Decrypt All Files</div> : <div>Subscribe for {feed!.fee} MIST for {Math.floor(parseInt(feed!.ttl) / 60 / 1000)} minutes</div>}
                 </Button>
               </Dialog.Trigger>
               {decryptedFileUrls.length > 0 && (

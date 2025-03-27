@@ -151,13 +151,13 @@ export function Allowlist({ setRecipientAllowlist, setCapId }: AllowlistProps) {
   return (
     <Flex direction="column" gap="2" justify="start">
       <Card key={`${allowlist?.id}`}>
-        <h3>Share 
+      <h3>Admin View: Allowlist {allowlist?.name} (ID {allowlist?.id})</h3>
+        <h3>Share&nbsp;
           <a href={`${window.location.origin}/allowlist-example/view/allowlist/${allowlist?.id}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>
             this link
-          </a> with allowed users to access the files in this allowlist. 
+          </a> with users to access the files associated with this allowlist. 
         </h3>
-        <h3>Allowlist: {allowlist?.name} - {allowlist?.id}</h3>
-
+        
         <Flex direction="row" gap="2">
           <input placeholder="Add new address" />
           <Button
@@ -172,7 +172,7 @@ export function Allowlist({ setRecipientAllowlist, setCapId }: AllowlistProps) {
           </Button>
         </Flex>
 
-        <h4>Allowed User Addresses:</h4>
+        <h4>Allowed Users:</h4>
         {Array.isArray(allowlist?.list) && allowlist?.list.length > 0 ? (
           <ul>
             {allowlist?.list.map((listItem, itemIndex) => (

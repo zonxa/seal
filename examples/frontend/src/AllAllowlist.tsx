@@ -72,11 +72,11 @@ export function AllAllowlist() {
   
     return (
       <Card>
-        <h3>Admin View of All Allowlists</h3>
+        <h3>Admin View: Manage Allowlists</h3>
         <p>These are all the allowlists that you have created. Click manage to edit the allowlist and upload new files to the allowlist.</p>
         {cardItems.map((item) => (
           <Card key={`${item.cap_id} - ${item.allowlist_id}`}>
-            <p>{item.name} - {item.allowlist_id}</p>
+            <p>{item.name} (ID {item.allowlist_id})</p>
             <Button 
                 onClick={() => {
                   window.open(`${window.location.origin}/allowlist-example/admin/allowlist/${item.allowlist_id}`, '_blank');

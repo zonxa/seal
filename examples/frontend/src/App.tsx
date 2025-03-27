@@ -54,16 +54,17 @@ function App() {
         py="2"
         justify="between"
       >
-        <h1 className="text-4xl font-bold m-4">Seal Example Apps</h1>
+        <h1 className="text-4xl font-bold m-4 mb-8">Seal Example Apps</h1>
         {/* <p>TODO: add seal logo</p> */}
        <Box>
           <ConnectButton />
         </Box>
       </Flex>
-      <Card>
-        <p>1. Code: <a href="https://github.com/MystenLabs/seal-example">https://github.com/MystenLabs/seal-example</a></p>
-        <p>2. These examples are for Testnet only. Make sure you wallet is set to Testnet and has some balance (request from faucet.sui.io).</p>
+      <Card style={{ marginBottom: "2rem" }}>
+        <p>1. Code is available <a href="https://github.com/MystenLabs/seal/tree/main/examples">here</a>.</p>
+        <p>2. These examples are for Testnet only. Make sure you wallet is set to Testnet and has some balance (can request from <a href="https://faucet.sui.io/">faucet.sui.io</a>).</p>
         <p>3. Blobs are only stored on Walrus Testnet for 1 epoch by default, older files cannot be retrieved even if you have access.</p>
+        <p>4. The UI is minimal, designed for demo purposes only!</p>
       </Card>
       {currentAccount ? (
       <BrowserRouter>

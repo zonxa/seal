@@ -10,7 +10,7 @@ import { SuiClient } from "@mysten/sui/client";
 import { getAllowlistedKeyServers, SealClient, SessionKey } from "@mysten/seal";
 import { useParams } from "react-router-dom";
 
-const TTL_MIN = 1;
+const TTL_MIN = 10;
 export interface FeedData {
   allowlistId: string;
   allowlistName: string;
@@ -164,7 +164,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
 
   return (
     <Card>
-      <h3>Files for Allowlist {feed?.allowlistName} - {feed?.allowlistId}</h3>
+      <h3>Files for Allowlist {feed?.allowlistName} (ID {feed?.allowlistId})</h3>
       {feed === undefined ? (
         <p>No files found for this allowlist.</p>
       ) : (
@@ -179,12 +179,12 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
                 <Button 
                     onClick={() => onView(feed!.blobIds, feed!.allowlistId)}
                   >
-                    View All Files
+                    Download And Decrypt All Files
                   </Button>
                 </Dialog.Trigger>
                 {decryptedFileUrls.length > 0 && (
                   <Dialog.Content maxWidth="450px" key={reloadKey}>
-                  <Dialog.Title>View all files for this allowlist</Dialog.Title>
+                  <Dialog.Title>View all files</Dialog.Title>
                     <Flex direction="column" gap="2">
                     {
                       decryptedFileUrls.map((decryptedFileUrl, index) => (

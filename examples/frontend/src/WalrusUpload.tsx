@@ -187,7 +187,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
             handleSubmit();
           }} disabled={file === null}
         >
-          First: Encrypt and upload to walrus 
+          First step: Encrypt and upload to Walrus 
         </Button>
         {isUploading && (
           <div role="status">
@@ -238,9 +238,8 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
           disabled={!info || !file || recipientAllowlist === ""}
           aria-label="Encrypt and upload file"
         >
-          Second: Associate to Sui object
+          Second step: Associate file to allowlist
         </Button>
-        <p>e.g. the allowlist object or the service object for subscription</p>
       </Flex>
     </Card>
   );

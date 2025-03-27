@@ -1,7 +1,5 @@
 # Examples
 
-CONFIDENTIAL AND PROPRIETARY
-
 This reference application includes two different functionalities to showcase Seal's capabilities:
 
 **Allowlist-Based Access**
@@ -27,23 +25,6 @@ To access the service, the user must sign a personal message, which is then vali
 ## Run locally
 
 ```bash
-cd frontend/
 pnpm install
 pnpm dev
 ```
-
-## Seal SDK
-
-Download and install from [here](https://www.npmjs.com/package/@mysten/seal).
-
-## Example Move Contracts
-
-To deploy a custom access policy, replace the `subscription.move` and `allowlist.move` files in the `move/sources` directory.
-
-```bash
-sui client switch --env testnet
-sui move build
-sui client publish --gas-budget 100000000
-```
-
-Then replace the published package ID in `constant.ts`. 

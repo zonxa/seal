@@ -77,19 +77,18 @@ export function Service({ setRecipientAllowlist, setCapId }: AllowlistProps) {
   }
 
   return (
-    <Flex direction="column" gap="2" justify="start">
+    <Flex direction="column" gap="2" justify="start">      
       <Card key={`${service?.id}`}>
-        <h3>Share 
+      <h3>Admin View: Service {service?.name} (ID {service?.id})</h3>
+        <h3>Share&nbsp;
           <a href={`${window.location.origin}/subscription-example/view/service/${service?.id}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }} aria-label="Download encrypted blob">
           this link
-          </a> with other users to subscribe to this feed and access the the files in it.
+          </a> with other users to subscribe to this service and access its files.
         </h3>
-        <h3>Service: {service?.name} - {service?.id}</h3>
+        
         <Flex direction="column" gap="2" justify="start">
-          <p><strong>ID:</strong> {service?.id}</p>
-          <p><strong>Name:</strong> {service?.name}</p>
           <p><strong>Subscription duration:</strong> {service?.ttl ? service?.ttl / 60 / 1000 : 'null'} minutes</p>
-          <p><strong>Subscription fee:</strong> {service?.fee}</p>
+          <p><strong>Subscription fee:</strong> {service?.fee} MIST</p>
         </Flex>
       </Card>
     </Flex>
