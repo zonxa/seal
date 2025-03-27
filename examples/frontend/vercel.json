@@ -1,0 +1,16 @@
+{
+    "rewrites": [
+      {
+        "source": "/aggregator/:path*",
+        "destination": "https://aggregator.walrus-testnet.walrus.space/:path*"
+      },
+      {
+        "source": "/publisher/:path*",
+        "destination": "https://publisher.walrus-testnet.walrus.space/:path*"
+      },
+      {
+      "source": "/(.*)",
+      "destination": "/index.html"
+      }
+    ]
+  }
