@@ -14,6 +14,7 @@ use fastcrypto::hmac::{hkdf_sha3_256, HkdfIkm};
 use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::AllowedRng;
 use fastcrypto::traits::ToFromBytes;
+use sui_types::base_types::ObjectID;
 
 pub type MasterKey = Scalar;
 pub type PublicKey = G2Element;
@@ -22,6 +23,9 @@ pub type Nonce = G2Element;
 pub type Plaintext = [u8; KEY_SIZE];
 pub type Ciphertext = [u8; KEY_SIZE];
 pub type Randomness = Scalar;
+
+// Additional info for the key derivation. Contains the object id for the key server and the share index.
+pub type Info = (ObjectID, u8);
 
 /// Generate a key pair consisting of a master key and a public key.
 pub fn generate_key_pair<R: AllowedRng>(rng: &mut R) -> (MasterKey, PublicKey) {
@@ -61,21 +65,23 @@ pub fn encrypt_batched_deterministic(
     plaintexts: &[Plaintext],
     public_keys: &[PublicKey],
     id: &[u8],
-    infos: &[impl AsRef<[u8]>],
+    infos: &[Info],
 ) -> FastCryptoResult<(Nonce, Vec<Ciphertext>)> {
+    let batch_size = plaintexts.len();
+    if batch_size != public_keys.len() || batch_size != infos.len() {
+        return Err(InvalidInput);
+    }
+
     let gid = G1Element::hash_to_group_element(id);
     let gid_r = gid * randomness;
     let nonce = G2Element::generator() * randomness;
     Ok((
         nonce,
-        public_keys
-            .iter()
-            .zip(plaintexts)
-            .zip(infos)
-            .map(|((public_key, plaintext), info)| {
+        (0..batch_size)
+            .map(|i| {
                 xor(
-                    &kdf(&gid_r.pairing(public_key), &nonce, &gid, info.as_ref()),
-                    plaintext,
+                    &kdf(&gid_r.pairing(&public_keys[i]), &nonce, &gid, &infos[i]),
+                    &plaintexts[i],
                 )
             })
             .collect(),
@@ -89,7 +95,7 @@ pub fn decrypt(
     ciphertext: &Ciphertext,
     secret_key: &UserSecretKey,
     id: &[u8],
-    info: &[u8],
+    info: &Info,
 ) -> Plaintext {
     let gid = G1Element::hash_to_group_element(id);
     xor(
@@ -113,7 +119,7 @@ pub fn decrypt_deterministic(
     ciphertext: &Ciphertext,
     public_key: &PublicKey,
     id: &[u8],
-    info: &[u8],
+    info: &Info,
 ) -> FastCryptoResult<Plaintext> {
     let gid = G1Element::hash_to_group_element(id);
     let gid_r = gid * randomness;
@@ -124,16 +130,24 @@ pub fn decrypt_deterministic(
     ))
 }
 
-/// Derive a random key from public inputs and a info string.
-fn kdf(input: &GTElement, nonce: &G2Element, gid: &G1Element, info: &[u8]) -> [u8; KEY_SIZE] {
+/// Derive a random key from public inputs.
+fn kdf(
+    input: &GTElement,
+    nonce: &G2Element,
+    gid: &G1Element,
+    (object_id, index): &Info,
+) -> [u8; KEY_SIZE] {
     let mut bytes = input.to_byte_array().to_vec(); // 576 bytes
     bytes.extend_from_slice(&nonce.to_byte_array()); // 96 bytes
     bytes.extend_from_slice(&gid.to_byte_array()); // 48 bytes
 
+    let mut info = object_id.to_vec();
+    info.extend_from_slice(&[*index]);
+
     hkdf_sha3_256(
         &HkdfIkm::from_bytes(&bytes).expect("not fixed length"),
         &[], // no salt
-        info,
+        &info,
         KEY_SIZE,
     )
     .expect("kdf should not fail")
@@ -180,9 +194,11 @@ mod tests {
         let x = GTElement::generator() * r;
         let nonce = G2Element::generator() * r;
         let gid = G1Element::hash_to_group_element(&[0]);
-        let derived_key = kdf(&x, &nonce, &gid, &[]);
+        let object_id = ObjectID::new([0; 32]);
+
+        let derived_key = kdf(&x, &nonce, &gid, &(object_id, 42));
         let expected =
-            hex::decode("57d43441a0b561088d4162a1b38ea8a2d443dd2c50ec4aca0610a1a79c057f74")
+            hex::decode("1963b93f076d0dc97cbb38c3864b2d6baeb87c7eb99139100fd775b0b09f668b")
                 .unwrap();
         assert_eq!(expected, derived_key);
     }

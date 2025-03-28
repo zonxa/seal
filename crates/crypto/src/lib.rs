@@ -140,9 +140,11 @@ pub fn seal_encrypt(
         indices, shares, ..
     } = split(&mut rng, base_key, threshold, number_of_shares)?;
 
+    let services = key_servers.into_iter().zip(indices).collect::<Vec<_>>();
+
     let encrypted_shares = match public_keys {
         IBEPublicKeys::BonehFranklinBLS12381(public_keys) => {
-            if public_keys.len() != key_servers.len() {
+            if public_keys.len() != number_of_shares as usize {
                 return Err(InvalidInput);
             }
             let randomness = ibe::Randomness::rand(&mut rng);
@@ -154,7 +156,7 @@ pub fn seal_encrypt(
                 &shares,
                 public_keys,
                 &full_id,
-                &indices.iter().map(|i| [*i]).collect_vec(),
+                &services,
             )?;
 
             let encrypted_randomness = ibe::encrypt_randomness(
@@ -174,7 +176,7 @@ pub fn seal_encrypt(
             version: 0,
             package_id,
             id,
-            services: key_servers.into_iter().zip(indices).collect(),
+            services,
             threshold,
             encrypted_shares,
             ciphertext,
@@ -253,7 +255,7 @@ pub fn seal_decrypt(
                             .get(&services[i].0)
                             .expect("This shouldn't happen: It's checked above that this secret key is available"),
                         &full_id,
-                        &[index],
+                        &services[i],
                     ))
                 })
                 .collect_vec()
@@ -267,7 +269,7 @@ pub fn seal_decrypt(
     if let Some(public_keys) = public_keys {
         let all_shares = encrypted_shares.decrypt_all_shares(
             &full_id,
-            &shares.iter().map(|(i, _)| *i).collect_vec(),
+            services,
             public_keys,
             &derive_key(KeyPurpose::EncryptedRandomness, &base_key),
         )?;
@@ -330,7 +332,7 @@ impl IBEEncryptions {
     fn decrypt_all_shares(
         &self,
         id: &[u8],
-        indices: &[u8],
+        services: &[(ObjectID, u8)],
         public_keys: &IBEPublicKeys,
         key: &[u8; KEY_SIZE],
     ) -> FastCryptoResult<Vec<[u8; KEY_SIZE]>> {
@@ -348,8 +350,8 @@ impl IBEEncryptions {
                     IBEPublicKeys::BonehFranklinBLS12381(public_keys) => public_keys
                         .iter()
                         .zip(encrypted_shares)
-                        .zip(indices)
-                        .map(|((pk, s), i)| decrypt_deterministic(&nonce, s, pk, id, &[*i]))
+                        .zip(services)
+                        .map(|((pk, s), service)| decrypt_deterministic(&nonce, s, pk, id, service))
                         .collect::<FastCryptoResult<Vec<_>>>(),
                 }
             }
@@ -551,17 +553,21 @@ mod tests {
         let inner_id = [1, 2, 3, 4];
 
         let master_keys = [
-            "ZdAnywAnAXMKKAlx4v/CMJWtNFZHLIqNESl902wXkuU=",
-            "DegVvRf90+e1LT6xg/A3Z8stoDvU+p4iPytqeQP7Teo=",
-            "VVhIjEml209nlk5bbdIV4zPuHdiPyPA0nRi2rVNYolk=",
+            "KPUXJQxoijA276hI6XhNVgIewyaija8UABeFTwEeD6k=",
+            "AwuqCSqP/vHF+/roqrhjzKj070ouLFGWkYr9msDv9eQ=",
+            "JyScQKCG091JJvmedlGFO+lBmsZKynKe3h8jbUlCA7o=",
         ]
         .iter()
         .map(|key| {
             Scalar::from_byte_array(&Base64::decode(key).unwrap().try_into().unwrap()).unwrap()
         })
         .collect::<Vec<_>>();
+        let public_keys = master_keys
+            .iter()
+            .map(ibe::public_key_from_master_key)
+            .collect_vec();
 
-        let encryption = Base64::decode("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAECAwQDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAO+AgCrVBMsvF+/sFTzCsENP26AcltpBOIfzMc2uawNsVivUG/zV5I7CpxDW0b+/dtIMjQF3GAOqRhAm4eFeyXFY5t17o4JbLJ77BPiJ+H1ZT+hSztGlzzvZNB0WaIGLx+fPvYDL4vRbNq5hmwVkM5Cq/jExqcIjunQucXxBkzAY3gqiIhACHqmpbkm9fL/4QDcIiGrz/uLEU46zEONg25OCImWFjLUWeeTwyck4o48gcMUwDBSo2cKiYeJ4AQb8b0lS0ilWXCcna+BrC/FZkMJyX5X6qw4T2Z2FKVz1FiaZY8PNNAAJ9TWhNQ7rozSYRtWQOmDfSptz0TgjQqfBj+3OFbRyyAC1dtP0/GwHgEEAQIDBA==").unwrap();
+        let encryption = Base64::decode("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAECAwQDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM3AgCEgtXcUe2iGMS8zEMEB9YVJo4WbdUuW7uqNBLEJc+xA0pnC6TNep2SGpudVO3gXtAG7W4lSNmc/xMhFv9WDfaTZfppIk7H6IXEmM8aUfjk6TyXtMO2D5T0PzB3HhTNIo4De81Z5tb7mnshJWTjJtHBoeWWUpoSunAGQQAWsGFQ5NK9AnAugziSj/SnS5I042nRGswaeMmTBG5+FyLP1FJPSadWZGTQSZzQGcRVVefDJw5gUxUVMhT+CfesAVHHZKkanKv0UhCEy3EnKc6Bkrl09fSLqo7hTKwqNxCJf9oaHhkAJ81y6phEffQ8F4xsbi87mpR05qGNtzvbyh/Y4PLhhL8yQyy4gxhPHwEEAQIDBA==").unwrap();
         let encryption: EncryptedObject = bcs::from_bytes(&encryption).unwrap();
 
         let object_ids = [
@@ -583,7 +589,7 @@ mod tests {
         let decrypted = seal_decrypt(
             &encryption,
             &IBEUserSecretKeys::BonehFranklinBLS12381(user_secret_keys),
-            None,
+            Some(&IBEPublicKeys::BonehFranklinBLS12381(public_keys)),
         )
         .unwrap();
 
