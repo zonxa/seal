@@ -6,33 +6,37 @@ import { ConnectButton, useCurrentAccount } from "@mysten/dapp-kit";
 import { Box, Button, Card, Container, Flex, Grid } from "@radix-ui/themes";
 import { CreateAllowlist } from "./CreateAllowlist";
 import { Allowlist } from "./Allowlist";
-import WalrusUpload from "./WalrusUpload";
+import WalrusUpload from "./EncryptAndUpload";
 import { useState } from "react";
-import { CreateService } from "./CreateService";
-import FeedsToSubscribe from "./FeedsToSubscribe";
-import { Service } from "./Service";
+import { CreateService } from "./CreateSubscriptionService";
+import FeedsToSubscribe from "./SubscriptionView";
+import { Service } from "./SubscriptionService";
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { AllAllowlist } from './AllAllowlist';
-import { AllServices } from './AllServices';
-import Feeds from './Feeds';
+import { AllAllowlist } from './OwnedAllowlists';
+import { AllServices } from './OwnedSubscriptionServices';
+import Feeds from './AllowlistView';
 
 function LandingPage() {
   return (
     <Grid columns="2" gap="4">
       <Card>
-        <Flex direction="column" gap="2" align="center">
-          <h2>Allowlist Example</h2>
-          <p>This example shows how a creator can define an allowlist based access. The creator first creates an allowlist and can add or remove users in the list. Creator can then add encrypted files to the allowlist. Only users in the allowlist have access to decrypt the files.
-          </p>
+        <Flex direction="column" gap="2" align="center" style={{ height: '100%' }}>
+          <div style={{ textAlign: 'center' }}>
+            <h2>Allowlist Example</h2>
+            <p>Shows how a creator can define an allowlist based access. The creator first creates an allowlist and can add or remove users in the list. The creator can then associate encrypted files to the allowlist. Only users in the allowlist have access to decrypt the files.
+            </p>
+          </div>
           <Link to="/allowlist-example">
             <Button size="3">Try it</Button>
           </Link>
         </Flex>
       </Card>
       <Card>
-        <Flex direction="column" gap="2" align="center">
-          <h2>Subscription Example</h2>
-          <p>This example shows how a creator can define a subscription based access to a service. The creator defines subcription fee and how long the subscription is valid for (TTL). Creator can then add encrypted files to the service. Only users who have purchases a subscription NFT with the fee have access to decrypt the files, along with the condition that the subscription must not have expired i.e. the subscription NFT creation timestamp plus TTL is larger than the current clock time.</p>
+        <Flex direction="column" gap="2" align="center" style={{ height: '100%' }}>
+          <div style={{ textAlign: 'center' }}>
+            <h2>Subscription Example</h2>
+            <p>Shows how a creator can define a subscription based access to its published files. The creator defines subcription fee and how long a subscription is valid for. The creator can then associate encrypted files to the service. Only users who have purchased a subscription (NFT) have access to decrypt the files, along with the condition that the subscription must not have expired (i.e. the subscription creation timestamp plus the TTL is smaller than the current clock time).</p>
+          </div>
           <Link to="/subscription-example">
             <Button size="3">Try it</Button>
           </Link>
@@ -64,8 +68,7 @@ function App() {
         <p>1. Code is available <a href="https://github.com/MystenLabs/seal/tree/main/examples">here</a>.</p>
         <p>2. These examples are for Testnet only. Make sure you wallet is set to Testnet and has some balance (can request from <a href="https://faucet.sui.io/">faucet.sui.io</a>).</p>
         <p>3. Blobs are only stored on Walrus Testnet for 1 epoch by default, older files cannot be retrieved even if you have access.</p>
-        <p>4. Currently only image files are supported.</p>
-        <p>5. The UI is minimal, designed for demo purposes only!</p>
+        <p>4. Currently only image files are supported, and the UI is minimal, designed for demo purposes only!</p>        
       </Card>
       {currentAccount ? (
       <BrowserRouter>

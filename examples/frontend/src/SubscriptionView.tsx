@@ -9,6 +9,7 @@ import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
 import { fromHex, SUI_CLOCK_OBJECT_ID, toHex } from "@mysten/sui/utils";
 import {SealClient, SessionKey, getAllowlistedKeyServers } from "@mysten/seal";
 import { useParams } from "react-router-dom";
+import { handleDecryption } from "./decryption";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -28,6 +29,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
   const client = new SealClient({
     suiClient,
     serverObjectIds: getAllowlistedKeyServers("testnet"),
+    verifyKeyServers: false,
   });
   const [feed, setFeed] = useState<FeedData>();
   const [decryptedFileUrls, setDecryptedFileUrls] = useState<string[]>([]);
@@ -184,50 +186,6 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     );
   }
 
-  const handleDecryption = async (
-    blobIds: string[],
-    sessionKey: SessionKey,
-    txBytes: Uint8Array,
-  ) => {
-    const decryptedFileUrls = [];
-    for (const blobId of blobIds) {
-        // Fetch the blob from blobId
-        const response = await fetch(blobId);
-        if (response.status === 404) {
-          console.error(`Blob not found on Walrus: ${blobId}`);
-          continue;
-        }
-        if (response.status === 403) {
-          throw new Error("Access forbidden");
-        }
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-
-      try {
-        const decryptedFile = await client.decrypt(
-          {
-            data: new Uint8Array(await response.arrayBuffer()),
-            sessionKey,
-            txBytes,
-          }
-        );
-        const blob = new Blob([decryptedFile], { type: "image/jpg" });
-        const decryptedFileUrl = URL.createObjectURL(blob);
-        decryptedFileUrls.push(decryptedFileUrl);
-      } catch (err) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('An unknown error occurred');
-        }
-      }
-    }
-    setDecryptedFileUrls(decryptedFileUrls);
-    setIsDialogOpen(true);
-    setReloadKey(prev => prev + 1);
-  }
-
   const onView = async (
     blobIds: string[],
     serviceId: string,
@@ -248,7 +206,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     );
 
     if (currentSessionKey && !currentSessionKey.isExpired() && currentSessionKey.getAddress() === suiAddress) {
-      handleDecryption(blobIds, currentSessionKey, txBytes);
+      handleDecryption(blobIds, currentSessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
       return;
     }
 
@@ -267,8 +225,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         {
           onSuccess: async (result) => {
             sessionKey.setPersonalMessageSignature(result.signature);
-            handleDecryption(blobIds, sessionKey, txBytes);
-            setReloadKey(prev => prev + 1);
+            handleDecryption(blobIds, sessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);            
           },
         },
       );
@@ -283,40 +240,42 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         <p>No files found for this service.</p>
       ) : (
       <Card key={feed!.id}>
-        <Heading size="3">Files for subscription service {feed!.name} (ID {feed!.id})</Heading>        
-        <Flex direction="column" align="start" gap="2">
+        <Heading size="3" style={{ marginBottom: "1rem" }}>Files for subscription service {feed!.name} (ID {feed!.id})</Heading>        
+        <Flex direction="column" gap="2">
             {feed!.blobIds.length === 0 ? (
               <p>No feeds found.</p>
             ) : (
               <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <Dialog.Trigger>
-                <Button onClick={() => onView(feed!.blobIds, feed!.id, Number(feed!.fee), feed!.subscriptionId)}>
-                  {feed!.subscriptionId ? <div>Download And Decrypt All Files</div> : <div>Subscribe for {feed!.fee} MIST for {Math.floor(parseInt(feed!.ttl) / 60 / 1000)} minutes</div>}
-                </Button>
-              </Dialog.Trigger>
-              {decryptedFileUrls.length > 0 && (
-              <Dialog.Content maxWidth="450px" key={reloadKey}>
-                <Dialog.Title>View all files for this service</Dialog.Title>
-                  <Flex direction="column" gap="2">
-                    {decryptedFileUrls.map((decryptedFileUrl, index) => (
-                      <div key={index}>
-                        <img
-                          src={decryptedFileUrl}
-                          alt={`Decrypted image ${index + 1}`}
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <Dialog.Trigger>
+                    <Button onClick={() => onView(feed!.blobIds, feed!.id, Number(feed!.fee), feed!.subscriptionId)}>
+                      {feed!.subscriptionId ? <div>Download And Decrypt All Files</div> : <div>Subscribe for {feed!.fee} MIST for {Math.floor(parseInt(feed!.ttl) / 60 / 1000)} minutes</div>}
+                    </Button>
+                  </Dialog.Trigger>
+                </div>
+                {decryptedFileUrls.length > 0 && (
+                  <Dialog.Content maxWidth="450px" key={reloadKey}>
+                    <Dialog.Title>View all files for this service</Dialog.Title>
+                    <Flex direction="column" gap="2">
+                      {decryptedFileUrls.map((decryptedFileUrl, index) => (
+                        <div key={index}>
+                          <img
+                            src={decryptedFileUrl}
+                            alt={`Decrypted image ${index + 1}`}
                           />
                         </div>
                       ))}
-                  </Flex>
-                <Flex gap="3" mt="4" justify="end">
-                  <Dialog.Close>
-                    <Button variant="soft" color="gray" onClick={() => setDecryptedFileUrls([])}>
-                      Close
-                    </Button>
-                  </Dialog.Close>
-                </Flex>
-                </Dialog.Content>
-              )}
-            </Dialog.Root>
+                    </Flex>
+                    <Flex gap="3" mt="4" justify="end">
+                      <Dialog.Close>
+                        <Button variant="soft" color="gray" onClick={() => setDecryptedFileUrls([])}>
+                          Close
+                        </Button>
+                      </Dialog.Close>
+                    </Flex>
+                  </Dialog.Content>
+                )}
+              </Dialog.Root>
             )}
         </Flex>
       </Card>)}
@@ -324,7 +283,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         <AlertDialog.Content maxWidth="450px">
           <AlertDialog.Title>Error</AlertDialog.Title>
           <AlertDialog.Description size="2">
-            No access to this feed.
+           No access to one of more encrypted files.
           </AlertDialog.Description>
 
           <Flex gap="3" mt="4" justify="end">

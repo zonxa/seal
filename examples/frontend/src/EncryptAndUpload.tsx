@@ -47,6 +47,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
   const client = new SealClient({
     suiClient,
     serverObjectIds: getAllowlistedKeyServers("testnet"),
+    verifyKeyServers: false,
   });
 
   const services: WalrusService[] = [
@@ -245,7 +246,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
         {isUploading && (
           <div role="status">
             <Spinner className="animate-spin" aria-label="Uploading" />
-            <span>Uploading</span>
+            <span>Uploading to Walrus (may take a few seconds, retrying with different service is possible) </span>
           </div>
         )}
   

@@ -62,7 +62,7 @@ export function CreateAllowlist() {
 
   return (
     <Card>
-      <h3>Admin View: Allowlist</h3>
+      <h3 style={{ marginBottom: "1rem" }}>Admin View: Allowlist</h3>
       <Flex direction="row" gap="2" justify="start">
         <input placeholder="Allowlist Name" onChange={(e) => setName(e.target.value)} />
         <Button

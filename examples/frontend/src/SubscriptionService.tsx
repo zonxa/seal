@@ -79,8 +79,8 @@ export function Service({ setRecipientAllowlist, setCapId }: AllowlistProps) {
   return (
     <Flex direction="column" gap="2" justify="start">      
       <Card key={`${service?.id}`}>
-      <h3>Admin View: Service {service?.name} (ID {service?.id})</h3>
-        <h3>Share&nbsp;
+      <h3 style={{ marginBottom: "1rem" }}>Admin View: Service {service?.name} (ID {service?.id})</h3>
+        <h3 style={{ marginBottom: "1rem" }}>Share&nbsp;
           <a href={`${window.location.origin}/subscription-example/view/service/${service?.id}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }} aria-label="Download encrypted blob">
           this link
           </a> with other users to subscribe to this service and access its files.
