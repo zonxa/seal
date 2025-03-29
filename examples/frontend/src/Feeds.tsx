@@ -58,8 +58,17 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
   const { mutate: signPersonalMessage } = useSignPersonalMessage();
   
   useEffect(() => {
+    // Call getFeed immediately
     getFeed();
-  }, [getFeed]);
+
+    // Set up interval to call getFeed every 3 seconds
+    const intervalId = setInterval(() => {
+      getFeed();
+    }, 3000);
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [id, suiClient, packageId]); // Add all dependencies that getFeed uses
 
   async function getFeed() {
     const allowlist = await suiClient.getObject({

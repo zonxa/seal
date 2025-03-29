@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Transaction } from "@mysten/sui/transactions";
 import { useNetworkVariable } from "./networkConfig";
 import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
-import { Button, Card, Flex, Spinner } from "@radix-ui/themes";
+import { Button, Card, Flex, Spinner, Text } from "@radix-ui/themes";
 import { getAllowlistedKeyServers, SealClient } from "@mysten/seal";
 
 export type Data = {
@@ -25,10 +25,18 @@ interface WalrusUploadProps {
   moduleName: string;
 }
 
+type WalrusService = {
+  id: string;
+  name: string;
+  publisherUrl: string;
+  aggregatorUrl: string;
+};
+
 export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [info, setInfo] = useState<Data | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [selectedService, setSelectedService] = useState<string>("service1");
 
   const SUI_VIEW_TX_URL = `https://suiscan.xyz/testnet/tx`;
   const SUI_VIEW_OBJECT_URL = `https://suiscan.xyz/testnet/object`;
@@ -40,14 +48,38 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
     suiClient,
     serverObjectIds: getAllowlistedKeyServers("testnet"),
   });
+
+  const services: WalrusService[] = [
+    { 
+      id: "service1", 
+      name: "walrus.space", 
+      publisherUrl: "/publisher1",
+      aggregatorUrl: "/aggregator1"
+    },
+    { 
+      id: "service2", 
+      name: "staketab.org", 
+      publisherUrl: "/publisher2",
+      aggregatorUrl: "/aggregator2"
+    },
+    { 
+      id: "service3", 
+      name: "redundex.com", 
+      publisherUrl: "/publisher3",
+      aggregatorUrl: "/aggregator3"
+    }
+  ];
+
   function getAggregatorUrl(path: string): string {
+    const service = services.find(s => s.id === selectedService);
     const cleanPath = path.replace(/^\/+/, '').replace(/^v1\//, '');
-    return `/aggregator/v1/${cleanPath}`;
+    return `${service?.aggregatorUrl}/v1/${cleanPath}`;
   }
   
   function getPublisherUrl(path: string): string {
+    const service = services.find(s => s.id === selectedService);
     const cleanPath = path.replace(/^\/+/, '').replace(/^v1\//, '');
-    return `/publisher/v1/${cleanPath}`;
+    return `${service?.publisherUrl}/v1/${cleanPath}`;
   }
 
   const { mutate: signAndExecute } = useSignAndExecuteTransaction({
@@ -63,12 +95,18 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
   });
 
   const handleFileChange = (event: any) => {
+    const file = event.target.files[0];
     // Max 10 MiB size
-    if (event.target.files[0].size > 10 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       alert("File size must be less than 10 MiB");
       return;
     }
-    setFile(event.target.files[0]);
+    // Check if file is an image
+    if (!file.type.startsWith('image/')) {
+      alert("Only image files are allowed");
+      return;
+    }
+    setFile(file);
     setInfo(null);
   };
 
@@ -176,12 +214,27 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
   return (
     <Card>
       <Flex direction="column" gap="2" align="start">
+        <Flex gap="2" align="center">
+          <Text>Select Walrus service:</Text>
+          <select
+            value={selectedService}
+            onChange={(e) => setSelectedService(e.target.value)}
+            aria-label="Select Walrus service"
+          >
+            {services.map(service => (
+              <option key={service.id} value={service.id}>
+                {service.name}
+              </option>
+            ))}
+          </select>
+        </Flex>
         <input 
           type="file" 
           onChange={handleFileChange}
-          aria-label="Choose file to upload"
+          accept="image/*"
+          aria-label="Choose image file to upload"
         />
-        <p>File size must be less than 10 MiB</p>
+        <p>File size must be less than 10 MiB. Only image files are allowed.</p>
         <Button
           onClick={() => {
             handleSubmit();
@@ -200,9 +253,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
           <div id="uploaded-blobs" role="region" aria-label="Upload details">
             <dl>
               <dt>Status:</dt>
-              <dd>{info.status}</dd>
-              <dt>Stored until epoch:</dt>
-              <dd>{info.endEpoch}</dd>
+              <dd>{info.status}</dd>              
               <dd>
                 <a 
                   href={info.blobUrl} 
@@ -238,7 +289,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
           disabled={!info || !file || recipientAllowlist === ""}
           aria-label="Encrypt and upload file"
         >
-          Second step: Associate file to allowlist
+          Second step: Associate file to Sui object
         </Button>
       </Flex>
     </Card>
