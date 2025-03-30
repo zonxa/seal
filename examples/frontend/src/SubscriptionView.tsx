@@ -209,13 +209,13 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
       handleDecryption(blobIds, currentSessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
       return;
     }
+    setCurrentSessionKey(null);
 
 		const sessionKey = new SessionKey({
 			address: suiAddress,
 			packageId,
 			ttlMin: TTL_MIN,
 		});
-    setCurrentSessionKey(sessionKey);
     
     try {
       signPersonalMessage(
@@ -224,8 +224,9 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         },
         {
           onSuccess: async (result) => {
-            sessionKey.setPersonalMessageSignature(result.signature);
-            handleDecryption(blobIds, sessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);            
+            await sessionKey.setPersonalMessageSignature(result.signature);
+            await handleDecryption(blobIds, sessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);            
+            setCurrentSessionKey(sessionKey);
           },
         },
       );
@@ -237,13 +238,13 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
   return (
     <Card>
       {feed === undefined ? (
-        <p>No files found for this service.</p>
+        <p>Waiting for files...</p>
       ) : (
       <Card key={feed!.id}>
         <h2 style={{ marginBottom: "1rem" }}>Files for subscription service {feed!.name} (ID {getObjectExplorerLink(feed!.id)})</h2>
         <Flex direction="column" gap="2">
             {feed!.blobIds.length === 0 ? (
-              <p>No feeds found.</p>
+              <p>No Files yet.</p>
             ) : (
               <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
@@ -283,7 +284,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         <AlertDialog.Content maxWidth="450px">
           <AlertDialog.Title>Error</AlertDialog.Title>
           <AlertDialog.Description size="2">
-           No access to one of more encrypted files.
+           {error}
           </AlertDialog.Description>
 
           <Flex gap="3" mt="4" justify="end">

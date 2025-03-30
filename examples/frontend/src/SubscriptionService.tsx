@@ -31,51 +31,60 @@ export function Service({ setRecipientAllowlist, setCapId }: AllowlistProps) {
   const { id } = useParams();
 
   useEffect(() => {
+    async function getService() {
+      // load the service for the given id
+      const service = await suiClient.getObject({
+        id: id!,
+        options: { showContent: true },
+      });
+      const fields =
+        (service.data?.content as { fields: any })?.fields || {};
+      setService({
+        id: id!,
+        fee: fields.fee,
+        ttl: fields.ttl,
+        owner: fields.owner,
+        name: fields.name,
+      });
+      setRecipientAllowlist(id!);
+
+      // load all caps
+      const res = await suiClient.getOwnedObjects({
+        owner: currentAccount?.address!,
+        options: {
+          showContent: true,
+          showType: true,
+        },
+        filter: {
+          StructType: `${packageId}::subscription::Cap`,
+        },
+      });
+          
+      // find the cap for the given service id
+      const capId = res.data
+        .map((obj) => {
+          const fields = (obj!.data!.content as { fields: any }).fields;
+          return {
+            id: fields?.id.id,
+            service_id: fields?.service_id,
+          };
+        })
+        .filter((item) => item.service_id === id)
+        .map((item) => item.id) as string[];
+      setCapId(capId[0]);
+    }
+
+    // Call getService immediately
     getService();
-  }, [getService]);
 
-  async function getService() {
-    // load the service for the given id
-    const service = await suiClient.getObject({
-      id: id!,
-      options: { showContent: true },
-    });
-    const fields =
-      (service.data?.content as { fields: any })?.fields || {};
-    setService({
-      id: id!,
-      fee: fields.fee,
-      ttl: fields.ttl,
-      owner: fields.owner,
-      name: fields.name,
-    });
-    setRecipientAllowlist(id!);
+    // Set up interval to call getService every 3 seconds
+    const intervalId = setInterval(() => {
+      getService();
+    }, 3000);
 
-    // load all caps
-    const res = await suiClient.getOwnedObjects({
-      owner: currentAccount?.address!,
-      options: {
-        showContent: true,
-        showType: true,
-      },
-      filter: {
-        StructType: `${packageId}::subscription::Cap`,
-      },
-    });
-        
-    // find the cap for the given service id
-    const capId = res.data
-    .map((obj) => {
-      const fields = (obj!.data!.content as { fields: any }).fields;
-      return {
-        id: fields?.id.id,
-        service_id: fields?.service_id,
-      };
-    })
-    .filter((item) => item.service_id === id)
-    .map((item) => item.id) as string[];
-    setCapId(capId[0]);
-  }
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [id]); // Only depend on id since it's needed for the API calls
 
   return (
     <Flex direction="column" gap="2" justify="start">      

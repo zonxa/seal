@@ -28,51 +28,60 @@ export function AllServices() {
     const [cardItems, setCardItems] = useState<CardItem[]>([]);
     
     useEffect(() => {
-      getCapObj();
-    }, [getCapObj]);
-    
-    async function getCapObj() {
-      // get all owned cap objects
-      const res = await suiClient.getOwnedObjects({
-        owner: currentAccount?.address!,
-        options: {
-          showContent: true,
-          showType: true,
-        },
-        filter: {
-          StructType: `${packageId}::subscription::Cap`,
-        },
-      });
-      const caps = res.data
-        .map((obj) => {
-          const fields = (obj!.data!.content as { fields: any }).fields;
-          return {
-            id: fields?.id.id,
-            service_id: fields?.service_id,
-          };
-        })
-      .filter((item) => item !== null) as Cap[];
-
-      // get all services of all the owned cap objects
-      const cardItems: CardItem[] = await Promise.all(
-      caps.map(async (cap) => {
-        const service = await suiClient.getObject({
-          id: cap.service_id,
-          options: { showContent: true },
+      async function getCapObj() {
+        // get all owned cap objects
+        const res = await suiClient.getOwnedObjects({
+          owner: currentAccount?.address!,
+          options: {
+            showContent: true,
+            showType: true,
+          },
+          filter: {
+            StructType: `${packageId}::subscription::Cap`,
+          },
         });
-        const fields =
-          (service.data?.content as { fields: any })?.fields || {};
-        return {
-          id: cap.service_id,
-          fee: fields.fee,
-          ttl: fields.ttl,
-          owner: fields.owner,
-          name: fields.name,
-        };
-      }),
-    );
-    setCardItems(cardItems);
-    }
+        const caps = res.data
+          .map((obj) => {
+            const fields = (obj!.data!.content as { fields: any }).fields;
+            return {
+              id: fields?.id.id,
+              service_id: fields?.service_id,
+            };
+          })
+          .filter((item) => item !== null) as Cap[];
+
+        // get all services of all the owned cap objects
+        const cardItems: CardItem[] = await Promise.all(
+          caps.map(async (cap) => {
+            const service = await suiClient.getObject({
+              id: cap.service_id,
+              options: { showContent: true },
+            });
+            const fields =
+              (service.data?.content as { fields: any })?.fields || {};
+            return {
+              id: cap.service_id,
+              fee: fields.fee,
+              ttl: fields.ttl,
+              owner: fields.owner,
+              name: fields.name,
+            };
+          }),
+        );
+        setCardItems(cardItems);
+      }
+
+      // Call getCapObj immediately
+      getCapObj();
+
+      // Set up interval to call getCapObj every 3 seconds
+      const intervalId = setInterval(() => {
+        getCapObj();
+      }, 3000);
+
+      // Cleanup interval on component unmount
+      return () => clearInterval(intervalId);
+    }, [currentAccount?.address,]); // Empty dependency array since we don't need any external values
     
     return (
       <div>

@@ -65,7 +65,7 @@ export function AllAllowlist() {
         }),
       );
       setCardItems(cardItems);
-    }, [currentAccount?.address, packageId, suiClient]);
+    }, [currentAccount?.address]);
   
     useEffect(() => {
       getCapObj();

@@ -32,51 +32,61 @@ export function Allowlist({ setRecipientAllowlist, setCapId }: AllowlistProps) {
   const [allowlist, setAllowlist] = useState<Allowlist>();
   const { id } = useParams();
   const [capId, setInnerCapId] = useState<string>();
-  async function getAllowlist() {
-    // load all caps
-    const res = await suiClient.getOwnedObjects({
-      owner: currentAccount?.address!,
-      options: {
-        showContent: true,
-        showType: true,
-      },
-      filter: {
-        StructType: `${packageId}::allowlist::Cap`,
-      },
-    });
-    
-    // find the cap for the given allowlist id
-    const capId = res.data
-    .map((obj) => {
-      const fields = (obj!.data!.content as { fields: any }).fields;
-      return {
-        id: fields?.id.id,
-        allowlist_id: fields?.allowlist_id,
-      };
-    })
-    .filter((item) => item.allowlist_id === id)
-    .map((item) => item.id) as string[];
-    setCapId(capId[0]);
-    setInnerCapId(capId[0]);
-
-    // load the allowlist for the given id
-    const allowlist = await suiClient.getObject({
-      id: id!,
-      options: { showContent: true },
-    });
-    const fields =
-      (allowlist.data?.content as { fields: any })?.fields || {};
-    setAllowlist({
-      id: id!,
-      name: fields.name,
-      list: fields.list,
-    });
-    setRecipientAllowlist(id!);
-  }
 
   useEffect(() => {
+    async function getAllowlist() {
+      // load all caps
+      const res = await suiClient.getOwnedObjects({
+        owner: currentAccount?.address!,
+        options: {
+          showContent: true,
+          showType: true,
+        },
+        filter: {
+          StructType: `${packageId}::allowlist::Cap`,
+        },
+      });
+      
+      // find the cap for the given allowlist id
+      const capId = res.data
+        .map((obj) => {
+          const fields = (obj!.data!.content as { fields: any }).fields;
+          return {
+            id: fields?.id.id,
+            allowlist_id: fields?.allowlist_id,
+          };
+        })
+        .filter((item) => item.allowlist_id === id)
+        .map((item) => item.id) as string[];
+      setCapId(capId[0]);
+      setInnerCapId(capId[0]);
+
+      // load the allowlist for the given id
+      const allowlist = await suiClient.getObject({
+        id: id!,
+        options: { showContent: true },
+      });
+      const fields =
+        (allowlist.data?.content as { fields: any })?.fields || {};
+      setAllowlist({
+        id: id!,
+        name: fields.name,
+        list: fields.list,
+      });
+      setRecipientAllowlist(id!);
+    }
+
+    // Call getAllowlist immediately
     getAllowlist();
-  }, [getAllowlist]);
+
+    // Set up interval to call getAllowlist every 3 seconds
+    const intervalId = setInterval(() => {
+      getAllowlist();
+    }, 3000);
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [id, currentAccount?.address]); // Only depend on id
 
   const { mutate: signAndExecute } = useSignAndExecuteTransaction({
     execute: async ({ bytes, signature }) =>
@@ -117,7 +127,6 @@ export function Allowlist({ setRecipientAllowlist, setCapId }: AllowlistProps) {
           },
         },
       );
-      getAllowlist();
     }
   };
 
@@ -144,10 +153,8 @@ export function Allowlist({ setRecipientAllowlist, setCapId }: AllowlistProps) {
           },
         },
       );
-      getAllowlist();
     }
   };
-
 
   return (
     <Flex direction="column" gap="2" justify="start">
