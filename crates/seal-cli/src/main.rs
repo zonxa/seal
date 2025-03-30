@@ -20,7 +20,6 @@ use std::str::FromStr;
 
 const KEY_LENGTH: usize = 32;
 
-// TODO: Now, the default encoding of all inputs and outputs is Hex. Should this be configurable?
 /// Default encoding for serializing and deserializing values.
 type DefaultEncoding = Hex;
 

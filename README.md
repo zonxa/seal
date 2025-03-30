@@ -3,7 +3,7 @@
 Seal is a decentralized secrets management (DSM) service that relies on access control policies defined and validated on [Sui](https://docs.sui.io/concepts/components). Application developers and users can use Seal to secure sensitive data at rest on decentralized storage like [Walrus](https://docs.walrus.site/index.html), or on any other on-chain / off-chain storage.
 
 > [!IMPORTANT]
-> Seal is in Testnet. Refer to the [Seal Beta Terms of Service](TermsOfService.md).
+> Seal Beta is in Testnet. Refer to the [Seal Beta Terms of Service](TermsOfService.md).
 
 ### Features
 
@@ -13,7 +13,7 @@ Seal is a decentralized secrets management (DSM) service that relies on access c
 - **Seamless access:** Applications can interact with Seal backends through software development kits (SDKs).
 
 > [!NOTE]
-> Currently there are two separate Mysten Labs managed testnet Seal backends. Users can choose `1-out-of-1`, `1-out-of-2` or `2-out-of-2` backends for threshold encryption. More backends managed by other parties would come online later. If you’re interested in operating one, reach out to the Sui Foundation or Mysten Labs team.
+> Currently there are two separate Mysten Labs managed Testnet Seal backends. Users can choose `1-out-of-1`, `1-out-of-2` or `2-out-of-2` backends for threshold encryption. More backends managed by other parties would come online later. If you’re interested in operating one, reach out to the Sui Foundation or Mysten Labs team.
 
 ### Use cases
 
@@ -30,7 +30,7 @@ There are a number of Web3 use cases that could utilize Seal to secure sensitive
 
 We’re looking for community feedback on what other capabilities would make sense to add to Seal. Some options are:
 
-- Realize a Seal backend with a Multi-party computation (MPC) committee seamlessly, such that users could choose the MPC committee as one of the `t-out-of-n` backends for threshold encryption.
+- Realize a Seal backend with a Multi-party computation (MPC) committee.
 - Server-side encryption to allow decryption of the secret data by Seal backends, as an alternative to, or an extension of, client-side encryption.
 - Digital Right Management (DRM) to allow encryption and decryption on the client-side in a secure & trusted environment, similar to how popular streaming services like Netflix, Youtube, HBO etc. use the DRM technology.
 

@@ -8,7 +8,7 @@
 
 ### Overview
 
-The system uses a cryptographic primitive called *Identity-Based Encryption (IBE)* to encrypt the stored data. This detail is hidden from the developer, as Seal is oblivious to the data it stores.
+The system uses a cryptographic primitive called *Identity-Based Encryption (IBE)* to encrypt the stored data. This detail is hidden from the developers and users, as Seal is oblivious to the data it stores.
 
 An [IBE scheme](https://en.wikipedia.org/wiki/Identity-based_encryption) consists of the following algorithms:
 - `Setup`: Generates a master secret key `msk` and a master public key `mpk`.
@@ -47,9 +47,7 @@ entry fun seal_approve(id: vector<u8>, c: &clock::Clock) {
 }
 ```
 
-The above module controls all IBE identities that begin with its package id `PkgId`. A user who wants to encrypt data with a time-lock `T` can choose a key-server and encrypt the data using identity `[PkgId][bcs::to_bytes(T)]` and the server's IBE master public key. Once the time on Sui is larger than `T`, *anyone* can call the server and ask for the key for identity `[PkgId][bcs::to_bytes(T)]`. This access control is implemented by the `seal_approve` function above, which receives the requested identity (without the `PkgId` prefix) and `Clock` as arguments, and succeeds only if the current time is at least `T`. The key-server locally evaluates `seal_approve` to decide whether to return the derived key or not.
-
-TODO: add a diagram?
+The above module controls all IBE identities that begin with its package id `PkgId`. A user who wants to encrypt data with a time-lock `T` can choose a key-server and encrypt the data using identity `[PkgId][bcs::to_bytes(T)]` and the server's IBE master public key. Once the time on Sui is larger than `T`, *anyone* can query the Seal server for the key of identity `[PkgId][bcs::to_bytes(T)]`. This access control is implemented by the `seal_approve` function above, which receives the requested identity (without the `PkgId` prefix) and `Clock` as arguments, and succeeds only if the current time is at least `T`. The key-server locally evaluates `seal_approve` to decide whether to return the derived key or not.
 
 Time-lock encryption can be used for various onchain applications, such as MEV-resistant trading, secure voting, etc.
 See [move/patterns](./move/patterns) for more examples and useful patterns.
@@ -57,25 +55,25 @@ See [move/patterns](./move/patterns) for more examples and useful patterns.
 The framework is completely generic. Developers can implement any authorization logic inside `seal_approve*` functions and can decide which key-servers to use depending on their use case (e.g., whether to use a fixed set of servers, or, ask the user to choose its preferred servers).
 
 Package upgrades maintain the same subdomain of identities, however only the latest version of the package can be used
-for access control (i.e., only `seal_approve*` functions from the latest version of the package are evaluated). Note that as long as a package can be upgraded, the policy can be modified arbitrarily (though transparently to everyone).
+for access control (i.e., only `seal_approve*` functions from the latest version of the package are evaluated). Note that as long as a package can be upgraded, the policy can be modified arbitrarily by the package owner (though transparently to everyone).
 
 ### Decentralization and trust model
 
 Seal is designed to reduce centralization using a couple of mechanisms.
 
-First, users may choose to use any set of one or more key servers and use their master public keys to encrypt their data. This can be used to realize `t`-out-of-`n` threshold encryption, providing privacy as long as less than `t` servers are compromised, and liveness as long as at least `t` servers are available. Seal does not require any specific key server to be used, and users can choose their preferred servers based on their trust assumptions. We expect different key servers to be deployed with different security properties (e.g., enclaves, or even air-gapped solutions), and in different locations and jurisdictions.
+First, users may choose to use any set of one or more key servers and use their master public keys to encrypt their data. This can be used to realize `t-out-of-n` threshold encryption, providing privacy as long as less than `t` servers are compromised, and liveness as long as at least `t` servers are available. Seal does not require any specific key server to be used, and users can choose their preferred servers based on their trust assumptions. We expect different key servers to be deployed with different security properties (e.g., enclaves, or even air-gapped solutions), and in different locations and jurisdictions.
 
 > [!NOTE]
 > The set of key servers is **not** dynamic once the data is encrypted, and encrypted data cannot be changed to use a different set of servers.
 
-Second, a single key server can itself be implemented using a MPC committee in a `t`-out-of-`n` fashion. This MPC committee can be formed by Sui validators, or any other set of participants. We expect such MPC key-servers to be deployed in the near future, and users could use them in addition to the standalone key store services. In this case, the set of parties that form the MPC committee can be dynamic.
+Second, a single key server can itself be implemented using a MPC committee in a `t-out-of-n` fashion. This MPC committee can be formed by Sui validators, or any other set of participants. We expect such MPC key-servers to be deployed in the near future, and users could use them in addition to the standalone key store services. In this case, the set of parties that form the MPC committee can be dynamic.
 
 Security of the encrypted data is based on the following assumptions:
 - The Seal key servers are not compromised, or less than a threshold of them are compromised in case threshold encryption was used. This includes both the Seal Key servers and the Sui full nodes their rely on for evaluating the access policy.
 - The policy associated with the encrypted data is correct. Note that a policy can be modifed by the package owner at any time if package upgrades are possible, and the new policy will replace the old one.
 
 ### Key Server
-A light server that is initialized with an IBE master secret key, and has access to a trusted full node. Simple deployments can be of a backend server with secret key stored in protected storage. More sophisticated deployment may use enclaves, MPC committees, or even air-gapped solutions.
+A light server that is initialized with an IBE master secret key, and has access to a full node (trusted by the service). Simple deployments can be of a backend server with secret key stored in protected storage. More sophisticated deployment may use enclaves, MPC committees, or even air-gapped solutions.
 
 The server exposes only two APIs:
 - `/v1/service` - Returns information about the service's onchain registered information.
@@ -94,10 +92,8 @@ To make sure that dapps can only access keys approved by the user, the user must
 Seal is designed to be compatible with different IBE schemes as a Key Encapsulation Mechanism (KEM), and different symmetric encryption schemes as a Data Encapsulation Mechanism (DEM).
 The currently supported primitives:
 - KEM: Boneh-Franklin IBE with the BLS12-381 curve.
-- DEM: AES-256-GCM, HMAC based CTR mode.
+- DEM: AES-256-GCM, HMAC based CTR mode (to be used when onchain decryption is needed).
 
 Post-quantum primitives are planned to be added in the future.
-
-TODO: link to doc with the primitives
 
 [Back to table of contents](#table-of-contents)
