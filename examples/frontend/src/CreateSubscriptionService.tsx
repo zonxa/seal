@@ -62,7 +62,7 @@ export function CreateService() {
   };
   return (
     <Card className="max-w-xs">
-      <h3 style={{ marginBottom: "1rem" }}>Admin View: Subscription</h3>
+      <h2 style={{ marginBottom: "1rem" }}>Admin View: Subscription</h2>
       <Flex direction="column" gap="2" justify="start">
       Price in Mist: <input onChange={(e) => setPrice(e.target.value)} />
       Subscription duration in minutes: <input onChange={(e) => setTtl(e.target.value)} />

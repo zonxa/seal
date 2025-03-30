@@ -9,7 +9,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { getAllowlistedKeyServers, SealClient, SessionKey } from "@mysten/seal";
 import { useParams } from "react-router-dom";
-import { handleDecryption } from "./decryption";
+import { handleDecryption, getObjectExplorerLink } from "./utils";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -130,7 +130,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
 
   return (
     <Card>
-      <h3 style={{ marginBottom: "1rem" }}>Files for Allowlist {feed?.allowlistName} (ID {feed?.allowlistId})</h3>
+      <h2 style={{ marginBottom: "1rem" }}>Files for Allowlist {feed?.allowlistName} (ID {feed?.allowlistId && getObjectExplorerLink(feed.allowlistId)})</h2>
       {feed === undefined ? (
         <p>No files found for this allowlist.</p>
       ) : (

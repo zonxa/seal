@@ -5,6 +5,7 @@ import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
 import { useEffect, useState } from "react";
 import { useNetworkVariable } from "./networkConfig";
 import { Button, Card } from "@radix-ui/themes";
+import { getObjectExplorerLink } from "./utils";
 
 export interface Cap {
     id: string;
@@ -75,11 +76,11 @@ export function AllServices() {
     
     return (
       <div>
-        <h3 style={{ marginBottom: "1rem" }}>Admin View: Owned Subscription Services</h3>
+        <h2 style={{ marginBottom: "1rem" }}>Admin View: Owned Subscription Services</h2>
         <p style={{ marginBottom: "2rem" }}>This is all the services that you have created. Click manage to upload new files to the service.</p>
         {cardItems.map((item) => (
           <Card key={`${item.id}`}>
-            <p><strong>{item.name}</strong></p>
+            <p><strong>{item.name} (ID {getObjectExplorerLink(item.id)})</strong></p>
             <p>Subscription Fee: {item.fee} MIST</p>
             <p>Subscription Duration: {item.ttl ? parseInt(item.ttl) / 60 / 1000 : 'null'} minutes</p>
             <Button 
