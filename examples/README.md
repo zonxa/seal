@@ -9,6 +9,7 @@ An allowlist enables a creator to manage a set of authorized addresses by adding
 To gain access, a user must sign a personal message, which is then verified against the allowlist. Upon successful verification, the user retrieves two key shares from two independent servers. If the membership check is validated, the user combines these key shares to derive the decryption key, which allows them to access and view the decrypted content.
 
 **Subscription-Based Access**
+
 A subscription service allows a creator to define a service with a specified price (denominated in MIST) and a time period (X minutes). When a user purchases a subscription, it is represented as a non-fungible token (NFT) stored on-chain.
 
 To access the service, the user must sign a personal message, which is then validated by the servers. The servers verify whether the subscription is active for the next X minutes by referencing the on-chain Sui clock and ensuring the user holds a valid subscription NFT. If the conditions are met, the user retrieves the decryption key, enabling access to the decrypted content.
@@ -25,6 +26,7 @@ To access the service, the user must sign a personal message, which is then vali
 ## Run locally
 
 ```bash
+cd frontend
 pnpm install
 pnpm dev
 ```
