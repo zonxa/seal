@@ -9,7 +9,7 @@ import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
 import { fromHex, SUI_CLOCK_OBJECT_ID, toHex } from "@mysten/sui/utils";
 import {SealClient, SessionKey, getAllowlistedKeyServers } from "@mysten/seal";
 import { useParams } from "react-router-dom";
-import { handleDecryption, getObjectExplorerLink } from "./utils";
+import { handleDecryption, getObjectExplorerLink, TxParams } from "./utils";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -135,18 +135,22 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
    * @param serviceId - The service id.
    * @returns The transaction data in bytes. 
    */
-  async function constructTxBytes(packageId: Uint8Array, moduleName: string, suiAddress: string, suiClient: SuiClient, subscriptionId: string, serviceId: Uint8Array): Promise<Uint8Array> {
+  async function constructTxBytes(packageId: string, fullId: string, suiAddress: string, suiClient: SuiClient, txParams: TxParams): Promise<Uint8Array> {
     const tx = new Transaction();
     tx.setSender(suiAddress);
-    tx.moveCall({
-      target: `${toHex(packageId)}::${moduleName}::seal_approve`,
-      arguments: [
-        tx.pure.vector("u8", serviceId),
-        tx.object(subscriptionId),
-        tx.object(toHex(serviceId)),
+    if (txParams.moduleName === "subscription") {
+      tx.moveCall({
+        target: `${packageId}::${txParams.moduleName}::seal_approve`,
+        arguments: [
+          tx.pure.vector("u8", fromHex(fullId)),
+          tx.object(txParams.params.subscriptionId),
+        tx.object(txParams.params.serviceId),
         tx.object(SUI_CLOCK_OBJECT_ID)
       ]
     });
+    } else {
+      throw new Error("Unsupported module type in SubscriptionView");
+    }
     return await tx.build( { client: suiClient, onlyTransactionKind: true })
   }
 
@@ -196,17 +200,21 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
       return handleSubscribe(serviceId, fee);
     }
 
-    const txBytes = await constructTxBytes(
-      fromHex(packageId),
-      "subscription",
-      suiAddress,
-      suiClient,
-      subscriptionId,
-      fromHex(serviceId),
-    );
-
     if (currentSessionKey && !currentSessionKey.isExpired() && currentSessionKey.getAddress() === suiAddress) {
-      handleDecryption(blobIds, currentSessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
+      handleDecryption(
+        blobIds, 
+        currentSessionKey, 
+        packageId, 
+        suiAddress, 
+        { moduleName: "subscription", params: { subscriptionId, serviceId } }, 
+        suiClient, 
+        client, 
+        constructTxBytes, 
+        setError, 
+        setDecryptedFileUrls, 
+        setIsDialogOpen, 
+        setReloadKey
+      );
       return;
     }
     setCurrentSessionKey(null);
@@ -225,7 +233,20 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         {
           onSuccess: async (result) => {
             await sessionKey.setPersonalMessageSignature(result.signature);
-            await handleDecryption(blobIds, sessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);            
+            await handleDecryption(
+              blobIds, 
+              sessionKey, 
+              packageId, 
+              suiAddress, 
+              { moduleName: "subscription", params: { subscriptionId, serviceId } }, 
+              suiClient, 
+              client, 
+              constructTxBytes, 
+              setError, 
+              setDecryptedFileUrls, 
+              setIsDialogOpen, 
+              setReloadKey
+            );            
             setCurrentSessionKey(sessionKey);
           },
         },

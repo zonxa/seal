@@ -15,8 +15,8 @@ importers:
         specifier: ^0.15.0
         version: 0.15.0(@tanstack/react-query@5.66.0(react@18.3.1))(@types/react-dom@18.3.5(@types/react@18.3.18))(@types/react@18.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.7.3)
       '@mysten/seal':
-        specifier: ^0.3.1
-        version: 0.3.1(typescript@5.7.3)
+        specifier: ^0.3.2
+        version: 0.3.2(typescript@5.7.3)
       '@mysten/sui':
         specifier: ^1.25.0
         version: 1.25.0(typescript@5.7.3)
@@ -439,8 +439,8 @@ packages:
       '@tanstack/react-query': ^5.0.0
       react: '*'
 
-  '@mysten/seal@0.3.1':
-    resolution: {integrity: sha512-LqXZ2Zqg4JEcqBCfTwOX3zv7/vrdfiLxVy5SOZIJ/RARK27YxU00DaLChs5eNlHGC7L7o4oiyx/v4T4isSuA2Q==}
+  '@mysten/seal@0.3.2':
+    resolution: {integrity: sha512-55MNGUsL8gx3BC6R+hYsnfj9nxJ+AZzoOVWaVm5/moBILYA59Jhaikqg4WCTDdz1NJxsC1+FeyIUu4qFLTa3ww==}
 
   '@mysten/sui@1.25.0':
     resolution: {integrity: sha512-oyncm8WKJ6RZPltJTcCOgdQbOIg6+7XYekMMhU5NDVYNnIhstRXX0axaSwZTR+kON17T92qcXntCN4AszEpH8w==}
@@ -2960,7 +2960,7 @@ snapshots:
       - react-dom
       - typescript
 
-  '@mysten/seal@0.3.1(typescript@5.7.3)':
+  '@mysten/seal@0.3.2(typescript@5.7.3)':
     dependencies:
       '@mysten/bcs': 1.5.0
       '@mysten/sui': 1.25.0(typescript@5.7.3)

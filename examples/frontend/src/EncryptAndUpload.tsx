@@ -6,6 +6,7 @@ import { useNetworkVariable } from "./networkConfig";
 import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Button, Card, Flex, Spinner, Text } from "@radix-ui/themes";
 import { getAllowlistedKeyServers, SealClient } from "@mysten/seal";
+import { fromHex, toHex } from "@mysten/sui/utils";
 
 export type Data = {
   status: string;
@@ -119,10 +120,13 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
         if (event.target && event.target.result) {
           const result = event.target.result;
           if (result instanceof ArrayBuffer) {
+            const nonce = crypto.getRandomValues(new Uint8Array(32));
+            const allowlistBytes = fromHex(recipientAllowlist);
+            const extendedId = toHex(new Uint8Array([...allowlistBytes, ...nonce]));
             const { encryptedObject: encryptedBytes } = await client.encrypt({
               threshold: 2,
               packageId,
-              id: recipientAllowlist,
+              id: extendedId,
               data: new Uint8Array(result),
             });
             const storageInfo = await storeBlob(encryptedBytes);
@@ -206,7 +210,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
       {
         onSuccess: async (result) => {
           console.log("res", result);
-          alert("File published successfully");
+          alert("Blob attached successfully, now share the link or upload more.");
         },
       },
     );

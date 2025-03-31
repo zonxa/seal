@@ -9,7 +9,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { getAllowlistedKeyServers, SealClient, SessionKey } from "@mysten/seal";
 import { useParams } from "react-router-dom";
-import { handleDecryption, getObjectExplorerLink } from "./utils";
+import { handleDecryption, getObjectExplorerLink, AllowlistParams, TxParams } from "./utils";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -27,16 +27,20 @@ export interface FeedData {
  * @param innerId - The inner id.
  * @returns The transaction data bytes.
  */
-async function constructTxBytes(packageId: Uint8Array, moduleName: string, suiAddress: string, suiClient: SuiClient, innerId: string): Promise<Uint8Array> {
+async function constructTxBytes(packageId: string, fullId: string, suiAddress: string, suiClient: SuiClient, txParams: TxParams): Promise<Uint8Array> {
   const tx = new Transaction();
   tx.setSender(suiAddress);
-  tx.moveCall({
-    target: `${toHex(packageId)}::${moduleName}::seal_approve`,
-    arguments: [
-      tx.pure.vector("u8", fromHex(innerId)),
-      tx.object(innerId),
-    ]
-  });
+  if (txParams.moduleName === "allowlist") {
+    tx.moveCall({
+      target: `${packageId}::${txParams.moduleName}::seal_approve`,
+      arguments: [
+        tx.pure.vector("u8", fromHex(fullId)),
+        tx.object(txParams.params.innerId),
+      ]
+    });
+  } else {
+    throw new Error("Unsupported module type in AllowlistView");
+  }
   return await tx.build({ client: suiClient, onlyTransactionKind: true });
 }
 
@@ -93,15 +97,17 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     blobIds: string[],
     allowlistId: string,
   ) => {
-    const txBytes = await constructTxBytes(
-      fromHex(packageId),
-      "allowlist",
-      suiAddress,
-      suiClient,
-      allowlistId,
-    );
     if (currentSessionKey && !currentSessionKey.isExpired() && currentSessionKey.getAddress() === suiAddress) {
-      handleDecryption(blobIds, currentSessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
+      handleDecryption(
+        blobIds, 
+        currentSessionKey, 
+        packageId, 
+        suiAddress, 
+        { moduleName: "allowlist", params: { innerId: allowlistId } }, 
+        suiClient, 
+        client, 
+        constructTxBytes, 
+        setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
       return;
     }
 
@@ -121,7 +127,15 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         {
           onSuccess: async (result) => {
             await sessionKey.setPersonalMessageSignature(result.signature);
-            await handleDecryption(blobIds, sessionKey, txBytes, client, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
+            await handleDecryption(
+              blobIds, 
+              sessionKey, 
+              packageId, 
+              suiAddress, 
+              { moduleName: "allowlist", params: { innerId: allowlistId } }, 
+              suiClient, 
+              client, 
+              constructTxBytes, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
             setCurrentSessionKey(sessionKey);
           },
         },

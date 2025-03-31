@@ -1,11 +1,38 @@
-import { SealClient, SessionKey, NoAccessError } from "@mysten/seal";
+import { SealClient, SessionKey, NoAccessError, EncryptedObject } from "@mysten/seal";
+import { SuiClient } from "@mysten/sui/client";
 import React from 'react';
+
+// A common interface for transaction params. 
+interface BaseTxParams<T extends string, P extends Record<string, string>> {
+  moduleName: T;
+  params: P;
+}
+
+type AllowlistParams = BaseTxParams<"allowlist", { innerId: string }>;
+type SubscriptionParams = BaseTxParams<"subscription", { 
+  subscriptionId: string;
+  serviceId: string;
+}>;
+
+export type TxParams = AllowlistParams | SubscriptionParams;
+
+type TxBytesConstructor = (
+  packageId: string,
+  fullId: string,
+  suiAddress: string,
+  suiClient: SuiClient,
+  txParams: TxParams
+) => Promise<Uint8Array>;
 
 export const handleDecryption = async (
   blobIds: string[],
   sessionKey: SessionKey,
-  txBytes: Uint8Array,
+  packageId: string,
+  suiAddress: string,
+  txParams: TxParams,
+  suiClient: SuiClient,
   client: SealClient,
+  constructTxBytes: TxBytesConstructor,
   setError: (error: string | null) => void,
   setDecryptedFileUrls: (urls: string[]) => void,
   setIsDialogOpen: (open: boolean) => void,
@@ -38,7 +65,7 @@ export const handleDecryption = async (
   console.log(`downloaded ${validDownloads.length} files out of ${blobIds.length}`);
   
   if (validDownloads.length === 0) {
-    const errorMsg = "Cannot retrieve files from Walrus aggregator";
+    const errorMsg = "Cannot retrieve files from this Walrus aggregator, try again (a randomly selected aggregator will be used).";
     console.error(errorMsg);
     setError(errorMsg);
     return;
@@ -48,6 +75,14 @@ export const handleDecryption = async (
 
   // Then, decrypt files sequentially
   for (const encryptedData of validDownloads) {
+    const fullId = EncryptedObject.parse(new Uint8Array(encryptedData)).id;
+    const txBytes = await constructTxBytes(
+      packageId,
+      fullId,
+      suiAddress,
+      suiClient,
+      txParams
+    );
     try {
       const decryptedFile = await client.decrypt({
         data: new Uint8Array(encryptedData),
