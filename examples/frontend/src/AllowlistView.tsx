@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import { useSignPersonalMessage, useSuiClient } from "@mysten/dapp-kit";
 import { useNetworkVariable } from "./networkConfig";
 import { AlertDialog, Button, Card, Dialog, Flex, Grid } from "@radix-ui/themes";
-import { fromHex, toHex } from "@mysten/sui/utils";
+import { fromHex } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { getAllowlistedKeyServers, SealClient, SessionKey } from "@mysten/seal";
 import { useParams } from "react-router-dom";
-import { handleDecryption, getObjectExplorerLink, AllowlistParams, TxParams } from "./utils";
+import { handleDecryption, getObjectExplorerLink, TxParams } from "./utils";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -56,6 +56,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
   const [feed, setFeed] = useState<FeedData>();
   const [decryptedFileUrls, setDecryptedFileUrls] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [partialError, setPartialError] = useState<string | null>(null);
   const [currentSessionKey, setCurrentSessionKey] = useState<SessionKey | null>(null);
   const { id } = useParams();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -107,7 +108,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         suiClient, 
         client, 
         constructTxBytes, 
-        setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
+        setError, setPartialError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
       return;
     }
 
@@ -135,7 +136,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
               { moduleName: "allowlist", params: { innerId: allowlistId } }, 
               suiClient, 
               client, 
-              constructTxBytes, setError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
+              constructTxBytes, setError, setPartialError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
             setCurrentSessionKey(sessionKey);
           },
         },
@@ -157,39 +158,41 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
               {feed!.blobIds.length === 0 ? (
                 <p>No files found for this allowlist.</p>
               ) : (
-                <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <Dialog.Trigger>
-                <Button 
-                    onClick={() => onView(feed!.blobIds, feed!.allowlistId)}
-                  >
-                    Download And Decrypt All Files
-                  </Button>
-                </Dialog.Trigger>
-                {decryptedFileUrls.length > 0 && (
-                  <Dialog.Content maxWidth="450px" key={reloadKey}>
-                  <Dialog.Title>View all files</Dialog.Title>
-                    <Flex direction="column" gap="2">
-                    {
-                      decryptedFileUrls.map((decryptedFileUrl, index) => (
-                        <div key={index}>
-                          <img
-                            src={decryptedFileUrl}
-                            alt={`Decrypted image ${index + 1}`}
-                            />
-                          </div>
-                        ))
-                      }
-                    </Flex>
-                  <Flex gap="3" mt="4" justify="end">
-                    <Dialog.Close>
-                      <Button variant="soft" color="gray" onClick={() => setDecryptedFileUrls([])}>
-                        Close
+                <div>
+                  <p>{feed!.blobIds.length} file(s) found. </p>
+                  <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog.Trigger>
+                      <Button onClick={() => onView(feed!.blobIds, feed!.allowlistId)}>
+                        Download And Decrypt All Files
                       </Button>
-                    </Dialog.Close>
-                  </Flex>
-                  </Dialog.Content>
-                )}
-              </Dialog.Root>
+                    </Dialog.Trigger>
+                    {decryptedFileUrls.length > 0 && (
+                      <Dialog.Content maxWidth="450px" key={reloadKey}>
+                      <Dialog.Title>View all files</Dialog.Title>
+                        {partialError && <p>{partialError}</p>}
+                        <Flex direction="column" gap="2">
+                        {
+                          decryptedFileUrls.map((decryptedFileUrl, index) => (
+                            <div key={index}>
+                              <img
+                                src={decryptedFileUrl}
+                                alt={`Decrypted image ${index + 1}`}
+                                />
+                              </div>
+                            ))
+                          }
+                        </Flex>
+                      <Flex gap="3" mt="4" justify="end">
+                        <Dialog.Close>
+                          <Button variant="soft" color="gray" onClick={() => setDecryptedFileUrls([])}>
+                            Close
+                          </Button>
+                        </Dialog.Close>
+                      </Flex>
+                      </Dialog.Content>
+                    )}
+                  </Dialog.Root>
+                </div>
               )}
             </Flex>
           </Card>

@@ -6,7 +6,7 @@ import { useNetworkVariable } from "./networkConfig";
 import { AlertDialog, Button, Card, Dialog, Flex } from "@radix-ui/themes";
 import { SuiClient } from "@mysten/sui/client";
 import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
-import { fromHex, SUI_CLOCK_OBJECT_ID, toHex } from "@mysten/sui/utils";
+import { fromHex, SUI_CLOCK_OBJECT_ID } from "@mysten/sui/utils";
 import {SealClient, SessionKey, getAllowlistedKeyServers } from "@mysten/seal";
 import { useParams } from "react-router-dom";
 import { handleDecryption, getObjectExplorerLink, TxParams } from "./utils";
@@ -34,6 +34,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
   const [feed, setFeed] = useState<FeedData>();
   const [decryptedFileUrls, setDecryptedFileUrls] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [partialError, setPartialError] = useState<string | null>(null);
   const packageId = useNetworkVariable("packageId");
   const currentAccount = useCurrentAccount();
   const [currentSessionKey, setCurrentSessionKey] = useState<SessionKey | null>(null);
@@ -211,6 +212,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         client, 
         constructTxBytes, 
         setError, 
+        setPartialError,
         setDecryptedFileUrls, 
         setIsDialogOpen, 
         setReloadKey
@@ -243,6 +245,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
               client, 
               constructTxBytes, 
               setError, 
+              setPartialError,
               setDecryptedFileUrls, 
               setIsDialogOpen, 
               setReloadKey
@@ -267,6 +270,8 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
             {feed!.blobIds.length === 0 ? (
               <p>No Files yet.</p>
             ) : (
+            <div>
+              <p>{feed!.blobIds.length} file(s) found. </p>
               <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                   <Dialog.Trigger>
@@ -279,6 +284,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
                   <Dialog.Content maxWidth="450px" key={reloadKey}>
                     <Dialog.Title>View all files for this service</Dialog.Title>
                     <Flex direction="column" gap="2">
+                      {partialError && <p>{partialError}</p>}
                       {decryptedFileUrls.map((decryptedFileUrl, index) => (
                         <div key={index}>
                           <img
@@ -298,7 +304,8 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
                   </Dialog.Content>
                 )}
               </Dialog.Root>
-            )}
+            </div>
+          )} 
         </Flex>
       </Card>)}
       <AlertDialog.Root open={!!error} onOpenChange={() => setError(null)}>
