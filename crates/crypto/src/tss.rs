@@ -62,6 +62,40 @@ pub fn split<R: AllowedRng, const N: usize>(
     })
 }
 
+/// Interpolate polynomials given a set of shares and return a closure to evaluate the polynomials at a given point.
+/// If the number of shares is less than the threshold or some shares are invalid, the result will be wrong but _no_ error is returned.
+/// If the indices of the shares are not unique or the set is empty, an [InvalidInput] will be returned.
+pub fn interpolate<const N: usize>(
+    shares: &[(u8, [u8; N])],
+) -> FastCryptoResult<impl Fn(u8) -> [u8; N]> {
+    if shares.is_empty()
+        || shares.iter().any(|(i, _)| *i == 0)
+        || !shares.iter().map(|(i, _)| i).all_unique()
+    {
+        return Err(InvalidInput);
+    }
+
+    let polynomials: Vec<Polynomial> = (0..N)
+        .map(|i| {
+            Polynomial::interpolate(
+                &shares
+                    .iter()
+                    .map(|(index, share)| (GF256(*index), GF256(share[i])))
+                    .collect_vec(),
+            )
+        })
+        .collect();
+
+    Ok(move |x: u8| {
+        polynomials
+            .iter()
+            .map(|p| p.evaluate(&GF256(x)).into())
+            .collect_vec()
+            .try_into()
+            .expect("Fixed length")
+    })
+}
+
 /// Reconstruct the secret from a set of shares.
 /// If the number of shares is less than the threshold or some shares are invalid, the result will be wrong but _no_ error is returned.
 /// If the indices of the shares are not unique or the set is empty, an [InvalidInput] will be returned.

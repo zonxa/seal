@@ -3,7 +3,7 @@
 
 use crate::dem::Hmac256Ctr;
 use crate::ibe::{decrypt_deterministic, encrypt_batched_deterministic};
-use crate::tss::SecretSharing;
+use crate::tss::{combine, interpolate, SecretSharing};
 use dem::Aes256Gcm;
 use fastcrypto::error::FastCryptoError::{GeneralError, InvalidInput};
 use fastcrypto::error::FastCryptoResult;
@@ -16,7 +16,7 @@ use serde_with::serde_as;
 use std::collections::HashMap;
 pub use sui_types::base_types::ObjectID;
 use sui_types::crypto::ToFromBytes;
-use tss::{combine, split};
+use tss::split;
 use utils::generate_random_bytes;
 
 pub mod dem;
@@ -262,31 +262,21 @@ pub fn seal_decrypt(
         }
     };
 
-    // Create the base key from the shares and decrypt
+    // Create the base key from the shares
     let base_key = combine(&shares)?;
 
-    // If desired, after we have the encryption key, we can decrypt all shares and check for consistency
+    // If the public keys are given, we can decrypt all shares and check for consistency
     if let Some(public_keys) = public_keys {
-        let all_shares = encrypted_shares.decrypt_all_shares(
+        encrypted_shares.check_share_consistency(
+            &shares,
             &full_id,
             services,
             public_keys,
-            &derive_key(KeyPurpose::EncryptedRandomness, &base_key),
+            &base_key,
         )?;
-
-        let reconstructed_base_key = combine(
-            &services
-                .iter()
-                .zip(all_shares)
-                .map(|((_, i), share)| (*i, share))
-                .collect_vec(),
-        )?;
-        if reconstructed_base_key != base_key {
-            return Err(GeneralError("Invalid secret sharing given".to_string()));
-        }
-        // TODO: The above is just a sanity check. We need to check that the interpolated polynomial from the given shares has the remaining shares as points. The current check just checks that the constant term is the same. But that doesn't rule out that another subset of the shares would've given a different secret.
     }
 
+    // Derive symmetric key and decrypt the ciphertext
     let dem_key = derive_key(KeyPurpose::DEM, &base_key);
     match ciphertext {
         Ciphertext::Aes256Gcm { blob, aad } => {
@@ -328,14 +318,40 @@ fn derive_key(purpose: KeyPurpose, derived_key: &[u8; KEY_SIZE]) -> [u8; KEY_SIZ
 }
 
 impl IBEEncryptions {
+    /// Given shares and the base key, check that the shares are consistent,
+    /// e.g., check that all subsets of shares would reconstruct the same polynomial.
+    fn check_share_consistency(
+        &self,
+        shares: &[(u8, [u8; KEY_SIZE])],
+        full_id: &[u8],
+        services: &[(ObjectID, u8)],
+        public_keys: &IBEPublicKeys,
+        base_key: &[u8; KEY_SIZE],
+    ) -> FastCryptoResult<()> {
+        // Compute the entire polynomial from the given shares. Note that polynomial(0) = base_key.
+        let polynomial = interpolate(shares)?;
+
+        // Decrypt all shares using the derived key
+        let all_shares = self.decrypt_all_shares(full_id, services, public_keys, base_key)?;
+
+        // Check that all shares are points on the reconstructed polynomials
+        if all_shares
+            .into_iter()
+            .any(|(i, share)| polynomial(i) != share)
+        {
+            return Err(GeneralError("Inconsistent shares".to_string()));
+        }
+        Ok(())
+    }
+
     /// Given the derived key, decrypt all shares
     fn decrypt_all_shares(
         &self,
-        id: &[u8],
+        full_id: &[u8],
         services: &[(ObjectID, u8)],
         public_keys: &IBEPublicKeys,
-        key: &[u8; KEY_SIZE],
-    ) -> FastCryptoResult<Vec<[u8; KEY_SIZE]>> {
+        base_key: &[u8; KEY_SIZE],
+    ) -> FastCryptoResult<Vec<(u8, [u8; KEY_SIZE])>> {
         match self {
             IBEEncryptions::BonehFranklinBLS12381 {
                 encrypted_randomness,
@@ -343,16 +359,28 @@ impl IBEEncryptions {
                 nonce,
             } => {
                 // Decrypt encrypted nonce,
-                let nonce = ibe::decrypt_and_verify_nonce(encrypted_randomness, key, nonce)?;
+                let nonce = ibe::decrypt_and_verify_nonce(
+                    encrypted_randomness,
+                    &derive_key(KeyPurpose::EncryptedRandomness, base_key),
+                    nonce,
+                )?;
 
                 // Decrypt all shares
                 match public_keys {
-                    IBEPublicKeys::BonehFranklinBLS12381(public_keys) => public_keys
-                        .iter()
-                        .zip(encrypted_shares)
-                        .zip(services)
-                        .map(|((pk, s), service)| decrypt_deterministic(&nonce, s, pk, id, service))
-                        .collect::<FastCryptoResult<Vec<_>>>(),
+                    IBEPublicKeys::BonehFranklinBLS12381(public_keys) => {
+                        if public_keys.len() != encrypted_shares.len() {
+                            return Err(InvalidInput);
+                        }
+                        public_keys
+                            .iter()
+                            .zip(encrypted_shares)
+                            .zip(services)
+                            .map(|((pk, s), service)| {
+                                decrypt_deterministic(&nonce, s, pk, full_id, service)
+                                    .map(|s| (service.1, s))
+                            })
+                            .collect::<FastCryptoResult<_>>()
+                    }
                 }
             }
         }
@@ -594,5 +622,82 @@ mod tests {
         .unwrap();
 
         assert_eq!(decrypted, b"My super secret message");
+    }
+
+    #[test]
+    fn test_share_consistency() {
+        let data = b"Hello, World!";
+        let package_id = ObjectID::random();
+        let id = vec![1, 2, 3, 4];
+
+        let full_id = create_full_id(&package_id, &id);
+
+        let mut rng = rand::thread_rng();
+        let keypairs = (0..3)
+            .map(|_| ibe::generate_key_pair(&mut rng))
+            .collect_vec();
+
+        let services = keypairs.iter().map(|_| ObjectID::random()).collect_vec();
+
+        let threshold = 2;
+        let public_keys =
+            IBEPublicKeys::BonehFranklinBLS12381(keypairs.iter().map(|(_, pk)| *pk).collect_vec());
+
+        let mut encrypted = seal_encrypt(
+            package_id,
+            id.clone(),
+            services.clone(),
+            &public_keys,
+            threshold,
+            EncryptionInput::Hmac256Ctr {
+                data: data.to_vec(),
+                aad: Some(b"something".to_vec()),
+            },
+        )
+        .unwrap()
+        .0;
+
+        let usks: [_; 3] = services
+            .iter()
+            .zip(&keypairs)
+            .map(|(s, kp)| (*s, ibe::extract(&kp.0, &full_id)))
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        // Modify the last share
+        let encrypted_valid_shares = match encrypted.encrypted_shares.clone() {
+            IBEEncryptions::BonehFranklinBLS12381 {
+                nonce,
+                mut encrypted_shares,
+                encrypted_randomness,
+            } => {
+                encrypted_shares[2][0] = encrypted_shares[2][0].wrapping_add(1);
+                IBEEncryptions::BonehFranklinBLS12381 {
+                    nonce,
+                    encrypted_shares,
+                    encrypted_randomness,
+                }
+            }
+        };
+        encrypted.encrypted_shares = encrypted_valid_shares;
+
+        // Decryption fails with all shares
+        assert!(seal_decrypt(
+            &encrypted,
+            &IBEUserSecretKeys::BonehFranklinBLS12381(HashMap::from(usks)),
+            None,
+        )
+        .is_err_and(|e| e == GeneralError("Invalid MAC".to_string())));
+
+        // Consider only the first two shares
+        let usks = IBEUserSecretKeys::BonehFranklinBLS12381(HashMap::from([usks[0], usks[1]]));
+
+        // Decryption with the first two valid shares succeeds.
+        assert_eq!(seal_decrypt(&encrypted, &usks, None,).unwrap(), data);
+
+        // But not if we also check the share consistency
+        assert!(seal_decrypt(&encrypted, &usks, Some(&public_keys),)
+            .is_err_and(|e| e == GeneralError("Inconsistent shares".to_string())));
     }
 }
