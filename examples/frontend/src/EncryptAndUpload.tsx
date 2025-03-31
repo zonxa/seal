@@ -120,7 +120,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
         if (event.target && event.target.result) {
           const result = event.target.result;
           if (result instanceof ArrayBuffer) {
-            const nonce = crypto.getRandomValues(new Uint8Array(32));
+            const nonce = crypto.getRandomValues(new Uint8Array(5));
             const allowlistBytes = fromHex(recipientAllowlist);
             const extendedId = toHex(new Uint8Array([...allowlistBytes, ...nonce]));
             const { encryptedObject: encryptedBytes } = await client.encrypt({

@@ -1,38 +1,15 @@
 import { SealClient, SessionKey, NoAccessError, EncryptedObject } from "@mysten/seal";
 import { SuiClient } from "@mysten/sui/client";
+import { Transaction } from "@mysten/sui/transactions";
 import React from 'react';
-
-// A common interface for transaction params. 
-interface BaseTxParams<T extends string, P extends Record<string, string>> {
-  moduleName: T;
-  params: P;
-}
-
-type AllowlistParams = BaseTxParams<"allowlist", { innerId: string }>;
-type SubscriptionParams = BaseTxParams<"subscription", { 
-  subscriptionId: string;
-  serviceId: string;
-}>;
-
-export type TxParams = AllowlistParams | SubscriptionParams;
-
-type TxBytesConstructor = (
-  packageId: string,
-  fullId: string,
-  suiAddress: string,
-  suiClient: SuiClient,
-  txParams: TxParams
-) => Promise<Uint8Array>;
-
+export type MoveCallConstructor = (tx: Transaction, id: string) => void;
 export const handleDecryption = async (
   blobIds: string[],
   sessionKey: SessionKey,
-  packageId: string,
   suiAddress: string,
-  txParams: TxParams,
   suiClient: SuiClient,
   client: SealClient,
-  constructTxBytes: TxBytesConstructor,
+  moveCallConstructor: (tx: Transaction, id: string) => void,
   setError: (error: string | null) => void,
   setPartialError: (error: string | null) => void,
   setDecryptedFileUrls: (urls: string[]) => void,
@@ -63,17 +40,18 @@ export const handleDecryption = async (
 
   // Filter out failed downloads
   const validDownloads = downloadResults.filter((result): result is ArrayBuffer => result !== null);
+  console.log('validDownloads count', validDownloads.length);
   
+  if (validDownloads.length === 0) {
+    const errorMsg ="Cannot retrieve files from this Walrus aggregator, try again (a randomly selected aggregator will be used). Files uploaded more than 1 epoch ago have been deleted from Walrus.";    console.error(errorMsg);
+    setError(errorMsg);
+    return;
+  }
+
   // show partial errors if not all files can be loaded
   if (validDownloads.length < blobIds.length) {
     const errorMsg = `Showing ${validDownloads.length} files out of ${blobIds.length} files. The rest did not store long enough on Walrus, please upload again.`;
     setPartialError(errorMsg);
-    return;
-  }
-  if (validDownloads.length === 0) {
-    const errorMsg = "Cannot retrieve files from this Walrus aggregator, try again (a randomly selected aggregator will be used). If uploaded from more than 1 epoch ago, the file has been deleted from Walrus, please upload again.";
-    console.error(errorMsg);
-    setError(errorMsg);
     return;
   }
 
@@ -82,13 +60,10 @@ export const handleDecryption = async (
   // Then, decrypt files sequentially
   for (const encryptedData of validDownloads) {
     const fullId = EncryptedObject.parse(new Uint8Array(encryptedData)).id;
-    const txBytes = await constructTxBytes(
-      packageId,
-      fullId,
-      suiAddress,
-      suiClient,
-      txParams
-    );
+    const tx = new Transaction();
+    tx.setSender(suiAddress);
+    moveCallConstructor(tx, fullId);
+    const txBytes = await tx.build({ client: suiClient, onlyTransactionKind: true });
     try {
       const decryptedFile = await client.decrypt({
         data: new Uint8Array(encryptedData),

@@ -9,7 +9,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { getAllowlistedKeyServers, SealClient, SessionKey } from "@mysten/seal";
 import { useParams } from "react-router-dom";
-import { handleDecryption, getObjectExplorerLink, TxParams } from "./utils";
+import { handleDecryption, getObjectExplorerLink, MoveCallConstructor } from "./utils";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -17,31 +17,17 @@ export interface FeedData {
   allowlistName: string;
   blobIds: string[];
 }
-/**
- * Construct a ptb for the given package id, module name, sui address, sui client and inner id. This corresponds to `entry fun seal_approve` in `allowlist.move`.
- * 
- * @param packageId - The package id.
- * @param moduleName - The module name.
- * @param suiAddress - The sui address.
- * @param suiClient - The sui client.
- * @param innerId - The inner id.
- * @returns The transaction data bytes.
- */
-async function constructTxBytes(packageId: string, fullId: string, suiAddress: string, suiClient: SuiClient, txParams: TxParams): Promise<Uint8Array> {
-  const tx = new Transaction();
-  tx.setSender(suiAddress);
-  if (txParams.moduleName === "allowlist") {
+
+async function constructMoveCall(packageId: string, allowlistId: string): Promise<MoveCallConstructor> {
+  return (tx: Transaction, id: string) => {
     tx.moveCall({
-      target: `${packageId}::${txParams.moduleName}::seal_approve`,
+      target: `${packageId}::allowlist::seal_approve`,
       arguments: [
-        tx.pure.vector("u8", fromHex(fullId)),
-        tx.object(txParams.params.innerId),
+        tx.pure.vector("u8", fromHex(id)),
+        tx.object(allowlistId),
       ]
     });
-  } else {
-    throw new Error("Unsupported module type in AllowlistView");
-  }
-  return await tx.build({ client: suiClient, onlyTransactionKind: true });
+  };
 }
 
 const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
@@ -99,15 +85,14 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     allowlistId: string,
   ) => {
     if (currentSessionKey && !currentSessionKey.isExpired() && currentSessionKey.getAddress() === suiAddress) {
+      const moveCallConstructor = await constructMoveCall(packageId, allowlistId);
       handleDecryption(
         blobIds, 
         currentSessionKey, 
-        packageId, 
         suiAddress, 
-        { moduleName: "allowlist", params: { innerId: allowlistId } }, 
         suiClient, 
         client, 
-        constructTxBytes, 
+        moveCallConstructor, 
         setError, setPartialError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
       return;
     }
@@ -128,15 +113,15 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         {
           onSuccess: async (result) => {
             await sessionKey.setPersonalMessageSignature(result.signature);
+            const moveCallConstructor = await constructMoveCall(packageId, allowlistId);
             await handleDecryption(
               blobIds, 
               sessionKey, 
-              packageId, 
               suiAddress, 
-              { moduleName: "allowlist", params: { innerId: allowlistId } }, 
               suiClient, 
               client, 
-              constructTxBytes, setError, setPartialError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
+              moveCallConstructor, 
+              setError, setPartialError, setDecryptedFileUrls, setIsDialogOpen, setReloadKey);
             setCurrentSessionKey(sessionKey);
           },
         },

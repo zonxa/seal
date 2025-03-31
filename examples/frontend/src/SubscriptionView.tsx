@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSignPersonalMessage, useSuiClient } from "@mysten/dapp-kit";
 import { useNetworkVariable } from "./networkConfig";
 import { AlertDialog, Button, Card, Dialog, Flex } from "@radix-ui/themes";
-import { SuiClient } from "@mysten/sui/client";
 import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
 import { fromHex, SUI_CLOCK_OBJECT_ID } from "@mysten/sui/utils";
 import {SealClient, SessionKey, getAllowlistedKeyServers } from "@mysten/seal";
 import { useParams } from "react-router-dom";
-import { handleDecryption, getObjectExplorerLink, TxParams } from "./utils";
+import { handleDecryption, getObjectExplorerLink, MoveCallConstructor } from "./utils";
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -125,34 +124,18 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     setFeed(feed);
   }
 
-  /**
-   * Construct a ptb for the given package id, module name, sui address, sui client and inner id. This corresponds to the 
-   * `entry fun seal_approve` in `subscription.move`.
-   * @param packageId - The package id.
-   * @param moduleName - The module name.
-   * @param suiAddress - The sui address.
-   * @param suiClient - The sui client.
-   * @param subscriptionId - The subscription id.
-   * @param serviceId - The service id.
-   * @returns The transaction data in bytes. 
-   */
-  async function constructTxBytes(packageId: string, fullId: string, suiAddress: string, suiClient: SuiClient, txParams: TxParams): Promise<Uint8Array> {
-    const tx = new Transaction();
-    tx.setSender(suiAddress);
-    if (txParams.moduleName === "subscription") {
+  async function constructMoveCall(packageId: string, serviceId: string, subscriptionId: string): Promise<MoveCallConstructor> {
+    return (tx: Transaction, id: string) => {
       tx.moveCall({
-        target: `${packageId}::${txParams.moduleName}::seal_approve`,
+        target: `${packageId}::subscription::seal_approve`,
         arguments: [
-          tx.pure.vector("u8", fromHex(fullId)),
-          tx.object(txParams.params.subscriptionId),
-        tx.object(txParams.params.serviceId),
-        tx.object(SUI_CLOCK_OBJECT_ID)
-      ]
-    });
-    } else {
-      throw new Error("Unsupported module type in SubscriptionView");
-    }
-    return await tx.build( { client: suiClient, onlyTransactionKind: true })
+          tx.pure.vector("u8", fromHex(id)),
+          tx.object(subscriptionId),
+          tx.object(serviceId),
+          tx.object(SUI_CLOCK_OBJECT_ID)
+        ]
+      });
+    };
   }
 
   async function handleSubscribe(serviceId: string, fee: number) {
@@ -202,15 +185,14 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     }
 
     if (currentSessionKey && !currentSessionKey.isExpired() && currentSessionKey.getAddress() === suiAddress) {
+      const moveCallConstructor = await constructMoveCall(packageId, serviceId, subscriptionId);
       handleDecryption(
         blobIds, 
         currentSessionKey, 
-        packageId, 
         suiAddress, 
-        { moduleName: "subscription", params: { subscriptionId, serviceId } }, 
         suiClient, 
         client, 
-        constructTxBytes, 
+        moveCallConstructor, 
         setError, 
         setPartialError,
         setDecryptedFileUrls, 
@@ -235,15 +217,14 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         {
           onSuccess: async (result) => {
             await sessionKey.setPersonalMessageSignature(result.signature);
+            const moveCallConstructor = await constructMoveCall(packageId, serviceId, subscriptionId);
             await handleDecryption(
               blobIds, 
               sessionKey, 
-              packageId, 
               suiAddress, 
-              { moduleName: "subscription", params: { subscriptionId, serviceId } }, 
               suiClient, 
               client, 
-              constructTxBytes, 
+              moveCallConstructor, 
               setError, 
               setPartialError,
               setDecryptedFileUrls, 
