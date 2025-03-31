@@ -7,6 +7,7 @@ export const handleDecryption = async (
   txBytes: Uint8Array,
   client: SealClient,
   setError: (error: string | null) => void,
+  setPartialError: (error: string | null) => void,
   setDecryptedFileUrls: (urls: string[]) => void,
   setIsDialogOpen: (open: boolean) => void,
   setReloadKey: (updater: (prev: number) => number) => void,
@@ -35,10 +36,15 @@ export const handleDecryption = async (
 
   // Filter out failed downloads
   const validDownloads = downloadResults.filter((result): result is ArrayBuffer => result !== null);
-  console.log(`downloaded ${validDownloads.length} files out of ${blobIds.length}`);
   
+  // show partial errors if not all files can be loaded
+  if (validDownloads.length < blobIds.length) {
+    const errorMsg = `Showing ${validDownloads.length} files out of ${blobIds.length} files. The rest did not store long enough on Walrus, please upload again.`;
+    setPartialError(errorMsg);
+    return;
+  }
   if (validDownloads.length === 0) {
-    const errorMsg = "Cannot retrieve files from Walrus aggregator";
+    const errorMsg = "Cannot retrieve files from Walrus aggregator. Files either deleted on Walrus or aggregator is not available.";
     console.error(errorMsg);
     setError(errorMsg);
     return;
