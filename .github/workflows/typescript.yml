@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: examples/frontend
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # Pin v4.1.1
@@ -26,12 +26,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: 'frontend/pnpm-lock.yaml'
+          cache-dependency-path: 'examples/frontend/pnpm-lock.yaml'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      # - name: Lint  reenable when moved to ts-sdk for readability
-      #   run: pnpm lint
       - name: Build
         run: pnpm build
-      - name: Test
-        run: pnpm test

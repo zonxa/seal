@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSignPersonalMessage, useSuiClient } from "@mysten/dapp-kit";
 import { useNetworkVariable } from "./networkConfig";
-import { AlertDialog, Button, Card, Dialog, Flex, Heading } from "@radix-ui/themes";
+import { AlertDialog, Button, Card, Dialog, Flex } from "@radix-ui/themes";
 import { SuiClient } from "@mysten/sui/client";
 import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
 import { fromHex, SUI_CLOCK_OBJECT_ID, toHex } from "@mysten/sui/utils";
