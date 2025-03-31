@@ -15,6 +15,7 @@ use sui::coin::Coin;
 const EInvalidCap : u64 = 0;
 const EInvalidFee : u64 = 1;
 const ENoAccess : u64 = 2;
+const MARKER: u64 = 3;
 
 public struct Service has key {
     id: UID,
@@ -33,11 +34,6 @@ public struct Subscription has key {
 public struct Cap has key {
     id: UID,
     service_id: ID,
-}
-
-public struct EncryptedObject has key, store {
-    id: UID,
-    blob_id: String,
 }
 
 //////////////////////////////////////////
@@ -122,11 +118,7 @@ entry fun seal_approve(id: vector<u8>, sub: &Subscription, service: &Service, c:
 }
 
 /// Encapsulate a blob into a Sui object and attach it to the Subscription
-public fun publish(service: &mut Service, cap: &Cap, blob_id: String, ctx: &mut TxContext) {
+public fun publish(service: &mut Service, cap: &Cap, blob_id: String) {
     assert!(cap.service_id == object::id(service), EInvalidCap);
-    let obj = EncryptedObject {
-        id: object::new(ctx),
-        blob_id: blob_id,
-    };
-    df::add(&mut service.id, blob_id, obj);
+    df::add(&mut service.id, blob_id, MARKER);
 }

@@ -11,7 +11,7 @@ use std::string::String;
 const EInvalidCap : u64 = 0;
 const ENoAccess : u64 = 1;
 const EDuplicate : u64 = 2;
-
+const MARKER: u64 = 3;
 
 public struct Allowlist has key {
     id: UID,
@@ -22,11 +22,6 @@ public struct Allowlist has key {
 public struct Cap has key {
     id: UID,
     allowlist_id: ID,
-}
-
-public struct EncryptedObject has key, store {
-    id: UID,
-    blob_id: String,
 }
 
 //////////////////////////////////////////
@@ -98,13 +93,9 @@ entry fun seal_approve(id: vector<u8>, allowlist: &Allowlist, ctx: &TxContext) {
 }
 
 /// Encapsulate a blob into a Sui object and attach it to the allowlist
-public fun publish(allowlist: &mut Allowlist, cap: &Cap, blob_id: String, ctx: &mut TxContext) {
+public fun publish(allowlist: &mut Allowlist, cap: &Cap, blob_id: String) {
     assert!(cap.allowlist_id == object::id(allowlist), EInvalidCap);
-    let obj = EncryptedObject {
-        id: object::new(ctx),
-        blob_id: blob_id,
-    };
-    df::add(&mut allowlist.id, blob_id, obj);
+    df::add(&mut allowlist.id, blob_id, MARKER);
 }
 
 #[test_only]
