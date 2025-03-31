@@ -185,7 +185,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
         <AlertDialog.Content maxWidth="450px">
           <AlertDialog.Title>Error</AlertDialog.Title>
           <AlertDialog.Description size="2">
-            No access to these files.
+          {error}
           </AlertDialog.Description>
 
           <Flex gap="3" mt="4" justify="end">

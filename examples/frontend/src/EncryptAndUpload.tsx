@@ -194,7 +194,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
       arguments: [
         tx.object(wl_id),
         tx.object(cap_id),
-        tx.pure.string(info!.blobUrl),
+        tx.pure.string(info!.blobId),
       ],
     });
 
