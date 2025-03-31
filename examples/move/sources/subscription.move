@@ -6,15 +6,13 @@
 
 module walrus::subscription;
 
-use sui::dynamic_field as df;
 use std::string::String;
-use sui::sui::SUI;
-use sui::clock::Clock;
-use sui::coin::Coin;
+use sui::{clock::Clock, coin::Coin, dynamic_field as df, sui::SUI};
+use walrus::utils::is_prefix;
 
-const EInvalidCap : u64 = 0;
-const EInvalidFee : u64 = 1;
-const ENoAccess : u64 = 2;
+const EInvalidCap: u64 = 0;
+const EInvalidFee: u64 = 1;
+const ENoAccess: u64 = 2;
 const MARKER: u64 = 3;
 
 public struct Service has key {
@@ -43,7 +41,7 @@ public struct Cap has key {
 /// The associated key-ids are [pkg id]::[service id][nonce] for any nonce (thus
 /// many key-ids can be created for the same service).
 public fun create_service(fee: u64, ttl: u64, name: String, ctx: &mut TxContext): Cap {
-   let service = Service {
+    let service = Service {
         id: object::new(ctx),
         fee: fee,
         ttl: ttl,
@@ -63,7 +61,12 @@ entry fun create_service_entry(fee: u64, ttl: u64, name: String, ctx: &mut TxCon
     transfer::transfer(create_service(fee, ttl, name, ctx), ctx.sender());
 }
 
-public fun subscribe(fee: Coin<SUI>, service: &Service, c: &Clock, ctx: &mut TxContext): Subscription {
+public fun subscribe(
+    fee: Coin<SUI>,
+    service: &Service,
+    c: &Clock,
+    ctx: &mut TxContext,
+): Subscription {
     assert!(fee.value() == service.fee, EInvalidFee);
     transfer::public_transfer(fee, service.owner);
     Subscription {
@@ -99,18 +102,7 @@ fun approve_internal(id: vector<u8>, sub: &Subscription, service: &Service, c: &
     };
 
     // Check if the id has the right prefix
-    let namespace = service.id.to_bytes();
-    let mut i = 0;
-    if (namespace.length() > id.length()) {
-        return false
-    };
-    while (i < namespace.length()) {
-        if (namespace[i] != id[i]) {
-            return false
-        };
-        i = i + 1;
-    };
-    true
+    is_prefix(service.id.to_bytes(), id)
 }
 
 entry fun seal_approve(id: vector<u8>, sub: &Subscription, service: &Service, c: &Clock) {
