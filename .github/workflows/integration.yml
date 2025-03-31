@@ -20,15 +20,5 @@ jobs:
         with:
           repository: MystenLabs/sui-operations
           token: ${{ secrets.SEAL_DEPLOY_DISPATCH_TOKEN }}
-          event-type: build-release-binaries
+          event-type: seal-deploy-ci
           client-payload: '{"seal_key_server_commit": "${{ github.sha }}", "environment": "ci"}'
-
-  run-integration-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch Seal Integration Tests in MystenLabs/ts-sdks-private
-        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # pin@v3.0.0
-        with:
-          repository: MystenLabs/ts-sdks
-          token: ${{ secrets.TS_CI_DISPATCH_TOKEN }}
-          event-type: seal-integration-tests
