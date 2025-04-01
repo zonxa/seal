@@ -1,12 +1,12 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-import React, { useState } from "react";
-import { Transaction } from "@mysten/sui/transactions";
-import { useNetworkVariable } from "./networkConfig";
-import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
-import { Button, Card, Flex, Spinner, Text } from "@radix-ui/themes";
-import { getAllowlistedKeyServers, SealClient } from "@mysten/seal";
-import { fromHex, toHex } from "@mysten/sui/utils";
+import React, { useState } from 'react';
+import { Transaction } from '@mysten/sui/transactions';
+import { useNetworkVariable } from './networkConfig';
+import { useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { Button, Card, Flex, Spinner, Text } from '@radix-ui/themes';
+import { getAllowlistedKeyServers, SealClient } from '@mysten/seal';
+import { fromHex, toHex } from '@mysten/sui/utils';
 
 export type Data = {
   status: string;
@@ -37,49 +37,49 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
   const [file, setFile] = useState<File | null>(null);
   const [info, setInfo] = useState<Data | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [selectedService, setSelectedService] = useState<string>("service1");
+  const [selectedService, setSelectedService] = useState<string>('service1');
 
   const SUI_VIEW_TX_URL = `https://suiscan.xyz/testnet/tx`;
   const SUI_VIEW_OBJECT_URL = `https://suiscan.xyz/testnet/object`;
 
   const NUM_EPOCH = 1;
-  const packageId = useNetworkVariable("packageId");
+  const packageId = useNetworkVariable('packageId');
   const suiClient = useSuiClient();
   const client = new SealClient({
     suiClient,
-    serverObjectIds: getAllowlistedKeyServers("testnet"),
+    serverObjectIds: getAllowlistedKeyServers('testnet'),
     verifyKeyServers: false,
   });
 
   const services: WalrusService[] = [
-    { 
-      id: "service1", 
-      name: "trusted-point.com", 
-      publisherUrl: "/publisher1",
-      aggregatorUrl: "/aggregator1"
+    {
+      id: 'service1',
+      name: 'trusted-point.com',
+      publisherUrl: '/publisher1',
+      aggregatorUrl: '/aggregator1',
     },
-    { 
-      id: "service2", 
-      name: "staketab.org", 
-      publisherUrl: "/publisher2",
-      aggregatorUrl: "/aggregator2"
+    {
+      id: 'service2',
+      name: 'staketab.org',
+      publisherUrl: '/publisher2',
+      aggregatorUrl: '/aggregator2',
     },
-    { 
-      id: "service3", 
-      name: "redundex.com", 
-      publisherUrl: "/publisher3",
-      aggregatorUrl: "/aggregator3"
-    }
+    {
+      id: 'service3',
+      name: 'redundex.com',
+      publisherUrl: '/publisher3',
+      aggregatorUrl: '/aggregator3',
+    },
   ];
 
   function getAggregatorUrl(path: string): string {
-    const service = services.find(s => s.id === selectedService);
+    const service = services.find((s) => s.id === selectedService);
     const cleanPath = path.replace(/^\/+/, '').replace(/^v1\//, '');
     return `${service?.aggregatorUrl}/v1/${cleanPath}`;
   }
-  
+
   function getPublisherUrl(path: string): string {
-    const service = services.find(s => s.id === selectedService);
+    const service = services.find((s) => s.id === selectedService);
     const cleanPath = path.replace(/^\/+/, '').replace(/^v1\//, '');
     return `${service?.publisherUrl}/v1/${cleanPath}`;
   }
@@ -100,12 +100,12 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
     const file = event.target.files[0];
     // Max 10 MiB size
     if (file.size > 10 * 1024 * 1024) {
-      alert("File size must be less than 10 MiB");
+      alert('File size must be less than 10 MiB');
       return;
     }
     // Check if file is an image
     if (!file.type.startsWith('image/')) {
-      alert("Only image files are allowed");
+      alert('Only image files are allowed');
       return;
     }
     setFile(file);
@@ -133,52 +133,52 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
             displayUpload(storageInfo.info, file.type);
             setIsUploading(false);
           } else {
-            console.error("Unexpected result type:", typeof result);
+            console.error('Unexpected result type:', typeof result);
             setIsUploading(false);
           }
         }
       };
       reader.readAsArrayBuffer(file);
     } else {
-      console.error("No file selected");
+      console.error('No file selected');
     }
   };
 
   const displayUpload = (storage_info: any, media_type: any) => {
     let info;
-    if ("alreadyCertified" in storage_info) {
+    if ('alreadyCertified' in storage_info) {
       info = {
-        status: "Already certified",
+        status: 'Already certified',
         blobId: storage_info.alreadyCertified.blobId,
         endEpoch: storage_info.alreadyCertified.endEpoch,
-        suiRefType: "Previous Sui Certified Event",
+        suiRefType: 'Previous Sui Certified Event',
         suiRef: storage_info.alreadyCertified.event.txDigest,
         suiBaseUrl: SUI_VIEW_TX_URL,
         blobUrl: getAggregatorUrl(`/v1/blobs/${storage_info.alreadyCertified.blobId}`),
         suiUrl: `${SUI_VIEW_OBJECT_URL}/${storage_info.alreadyCertified.event.txDigest}`,
-        isImage: media_type.startsWith("image"),
+        isImage: media_type.startsWith('image'),
       };
-    } else if ("newlyCreated" in storage_info) {
+    } else if ('newlyCreated' in storage_info) {
       info = {
-        status: "Newly created",
+        status: 'Newly created',
         blobId: storage_info.newlyCreated.blobObject.blobId,
         endEpoch: storage_info.newlyCreated.blobObject.storage.endEpoch,
-        suiRefType: "Associated Sui Object",
+        suiRefType: 'Associated Sui Object',
         suiRef: storage_info.newlyCreated.blobObject.id,
         suiBaseUrl: SUI_VIEW_OBJECT_URL,
         blobUrl: getAggregatorUrl(`/v1/blobs/${storage_info.newlyCreated.blobObject.blobId}`),
         suiUrl: `${SUI_VIEW_OBJECT_URL}/${storage_info.newlyCreated.blobObject.id}`,
-        isImage: media_type.startsWith("image"),
+        isImage: media_type.startsWith('image'),
       };
     } else {
-      throw Error("Unhandled successful response!");
+      throw Error('Unhandled successful response!');
     }
     setInfo(info);
   };
 
   const storeBlob = (encryptedData: Uint8Array) => {
     return fetch(`${getPublisherUrl(`/v1/blobs?epochs=${NUM_EPOCH}`)}`, {
-      method: "PUT",
+      method: 'PUT',
       body: encryptedData,
     }).then((response) => {
       if (response.status === 200) {
@@ -186,20 +186,16 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
           return { info };
         });
       } else {
-        throw new Error("Something went wrong when storing the blob!");
+        throw new Error('Something went wrong when storing the blob!');
       }
     });
   };
 
   async function handlePublish(wl_id: string, cap_id: string, moduleName: string) {
     const tx = new Transaction();
-     tx.moveCall({
+    tx.moveCall({
       target: `${packageId}::${moduleName}::publish`,
-      arguments: [
-        tx.object(wl_id),
-        tx.object(cap_id),
-        tx.pure.string(info!.blobId),
-      ],
+      arguments: [tx.object(wl_id), tx.object(cap_id), tx.pure.string(info!.blobId)],
     });
 
     tx.setGasBudget(10000000);
@@ -209,8 +205,8 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
       },
       {
         onSuccess: async (result) => {
-          console.log("res", result);
-          alert("Blob attached successfully, now share the link or upload more.");
+          console.log('res', result);
+          alert('Blob attached successfully, now share the link or upload more.');
         },
       },
     );
@@ -226,15 +222,15 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
             onChange={(e) => setSelectedService(e.target.value)}
             aria-label="Select Walrus service"
           >
-            {services.map(service => (
+            {services.map((service) => (
               <option key={service.id} value={service.id}>
                 {service.name}
               </option>
             ))}
           </select>
         </Flex>
-        <input 
-          type="file" 
+        <input
+          type="file"
           onChange={handleFileChange}
           accept="image/*"
           aria-label="Choose image file to upload"
@@ -243,26 +239,30 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
         <Button
           onClick={() => {
             handleSubmit();
-          }} disabled={file === null}
+          }}
+          disabled={file === null}
         >
-          First step: Encrypt and upload to Walrus 
+          First step: Encrypt and upload to Walrus
         </Button>
         {isUploading && (
           <div role="status">
             <Spinner className="animate-spin" aria-label="Uploading" />
-            <span>Uploading to Walrus (may take a few seconds, retrying with different service is possible) </span>
+            <span>
+              Uploading to Walrus (may take a few seconds, retrying with different service is
+              possible){' '}
+            </span>
           </div>
         )}
-  
+
         {info && file && (
           <div id="uploaded-blobs" role="region" aria-label="Upload details">
             <dl>
               <dt>Status:</dt>
-              <dd>{info.status}</dd>              
+              <dd>{info.status}</dd>
               <dd>
-                <a 
-                  href={info.blobUrl} 
-                  style={{ textDecoration: "underline" }}
+                <a
+                  href={info.blobUrl}
+                  style={{ textDecoration: 'underline' }}
                   download
                   onClick={(e) => {
                     e.preventDefault();
@@ -278,20 +278,20 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
                   href={info.suiUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ textDecoration: "underline" }}
+                  style={{ textDecoration: 'underline' }}
                   aria-label="View Sui object details"
                 >
                   Sui Object
                 </a>
               </dd>
             </dl>
-            </div>
+          </div>
         )}
         <Button
           onClick={() => {
             handlePublish(policyObject, cap_id, moduleName);
           }}
-          disabled={!info || !file || policyObject === ""}
+          disabled={!info || !file || policyObject === ''}
           aria-label="Encrypt and upload file"
         >
           Second step: Associate file to Sui object

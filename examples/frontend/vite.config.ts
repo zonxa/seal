@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
@@ -15,32 +15,32 @@ export default defineConfig({
         target: 'https://wal-aggregator-testnet.staketab.org',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/aggregator2/, '')
+        rewrite: (path) => path.replace(/^\/aggregator2/, ''),
       },
       '/aggregator3/v1': {
         target: 'https://walrus-testnet-aggregator.redundex.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/aggregator3/, '')
+        rewrite: (path) => path.replace(/^\/aggregator3/, ''),
       },
       '/publisher1/v1': {
         target: 'https://walrus-testnet-publisher.trusted-point.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/publisher1/, '')
+        rewrite: (path) => path.replace(/^\/publisher1/, ''),
       },
       '/publisher2/v1': {
         target: 'https://wal-publisher-testnet.staketab.org',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/publisher2/, '')
+        rewrite: (path) => path.replace(/^\/publisher2/, ''),
       },
       '/publisher3/v1': {
         target: 'https://walrus-testnet-publisher.redundex.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/publisher3/, '')
-      }
-    }
-  }
-})
+        rewrite: (path) => path.replace(/^\/publisher3/, ''),
+      },
+    },
+  },
+});

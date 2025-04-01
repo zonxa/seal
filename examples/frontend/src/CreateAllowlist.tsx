@@ -1,17 +1,17 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Transaction } from "@mysten/sui/transactions";
-import { Button, Card, Flex } from "@radix-ui/themes";
-import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
-import { useState } from "react";
-import { useNetworkVariable } from "./networkConfig";
-import { useNavigate } from "react-router-dom";
+import { Transaction } from '@mysten/sui/transactions';
+import { Button, Card, Flex } from '@radix-ui/themes';
+import { useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { useState } from 'react';
+import { useNetworkVariable } from './networkConfig';
+import { useNavigate } from 'react-router-dom';
 
 export function CreateAllowlist() {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
-  const packageId = useNetworkVariable("packageId");
+  const [name, setName] = useState('');
+  const packageId = useNetworkVariable('packageId');
   const suiClient = useSuiClient();
   const { mutate: signAndExecute } = useSignAndExecuteTransaction({
     execute: async ({ bytes, signature }) =>
@@ -26,8 +26,8 @@ export function CreateAllowlist() {
   });
 
   function createAllowlist(name: string) {
-    if (name === "") {
-      alert("Please enter a name for the allowlist");
+    if (name === '') {
+      alert('Please enter a name for the allowlist');
       return;
     }
     const tx = new Transaction();
@@ -42,14 +42,17 @@ export function CreateAllowlist() {
       },
       {
         onSuccess: async (result) => {
-          console.log("res", result);
+          console.log('res', result);
           // Extract the created allowlist object ID from the transaction result
           const allowlistObject = result.effects?.created?.find(
-            (item) => item.owner && typeof item.owner === 'object' && 'Shared' in item.owner
+            (item) => item.owner && typeof item.owner === 'object' && 'Shared' in item.owner,
           );
           const createdObjectId = allowlistObject?.reference?.objectId;
           if (createdObjectId) {
-            window.open(`${window.location.origin}/allowlist-example/admin/allowlist/${createdObjectId}`, '_blank');
+            window.open(
+              `${window.location.origin}/allowlist-example/admin/allowlist/${createdObjectId}`,
+              '_blank',
+            );
           }
         },
       },
@@ -62,16 +65,20 @@ export function CreateAllowlist() {
 
   return (
     <Card>
-      <h2 style={{ marginBottom: "1rem" }}>Admin View: Allowlist</h2>
+      <h2 style={{ marginBottom: '1rem' }}>Admin View: Allowlist</h2>
       <Flex direction="row" gap="2" justify="start">
         <input placeholder="Allowlist Name" onChange={(e) => setName(e.target.value)} />
         <Button
           size="3"
-          onClick={() => { createAllowlist(name);}}
+          onClick={() => {
+            createAllowlist(name);
+          }}
         >
           Create Allowlist
         </Button>
-        <Button size="3" onClick={handleViewAll}>View All Created Allowlists</Button>
+        <Button size="3" onClick={handleViewAll}>
+          View All Created Allowlists
+        </Button>
       </Flex>
     </Card>
   );
