@@ -80,7 +80,7 @@ function App() {
               <Route path="/admin/allowlist/:id" element={
                 <div>
                   <Allowlist setRecipientAllowlist={setRecipientAllowlist} setCapId={setCapId}/>
-                  <WalrusUpload recipientAllowlist={recipientAllowlist} cap_id={capId} moduleName="allowlist"/>
+                  <WalrusUpload policyObject={recipientAllowlist} cap_id={capId} moduleName="allowlist"/>
                 </div>
               } />
               <Route path="/admin/allowlists" element={<AllAllowlist />} />
@@ -93,7 +93,7 @@ function App() {
               <Route path="/admin/service/:id" element={
                 <div>
                   <Service setRecipientAllowlist={setRecipientAllowlist} setCapId={setCapId}/>
-                  <WalrusUpload recipientAllowlist={recipientAllowlist} cap_id={capId} moduleName="subscription"/>
+                  <WalrusUpload policyObject={recipientAllowlist} cap_id={capId} moduleName="subscription"/>
                 </div>
               } />
               <Route path="/admin/services" element={<AllServices />} />

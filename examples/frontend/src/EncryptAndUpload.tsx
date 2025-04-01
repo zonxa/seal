@@ -6,6 +6,7 @@ import { useNetworkVariable } from "./networkConfig";
 import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Button, Card, Flex, Spinner, Text } from "@radix-ui/themes";
 import { getAllowlistedKeyServers, SealClient } from "@mysten/seal";
+import { fromHex, toHex } from "@mysten/sui/utils";
 
 export type Data = {
   status: string;
@@ -20,7 +21,7 @@ export type Data = {
 };
 
 interface WalrusUploadProps {
-  recipientAllowlist: string;
+  policyObject: string;
   cap_id: string;
   moduleName: string;
 }
@@ -32,7 +33,7 @@ type WalrusService = {
   aggregatorUrl: string;
 };
 
-export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusUploadProps) {
+export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [info, setInfo] = useState<Data | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -53,7 +54,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
   const services: WalrusService[] = [
     { 
       id: "service1", 
-      name: "walrus.space", 
+      name: "trusted-point.com", 
       publisherUrl: "/publisher1",
       aggregatorUrl: "/aggregator1"
     },
@@ -119,10 +120,13 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
         if (event.target && event.target.result) {
           const result = event.target.result;
           if (result instanceof ArrayBuffer) {
+            const nonce = crypto.getRandomValues(new Uint8Array(5));
+            const policyObjectBytes = fromHex(policyObject);
+            const id = toHex(new Uint8Array([...policyObjectBytes, ...nonce]));
             const { encryptedObject: encryptedBytes } = await client.encrypt({
               threshold: 2,
               packageId,
-              id: recipientAllowlist,
+              id,
               data: new Uint8Array(result),
             });
             const storageInfo = await storeBlob(encryptedBytes);
@@ -206,7 +210,7 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
       {
         onSuccess: async (result) => {
           console.log("res", result);
-          alert("File published successfully");
+          alert("Blob attached successfully, now share the link or upload more.");
         },
       },
     );
@@ -285,9 +289,9 @@ export function WalrusUpload({ recipientAllowlist, cap_id, moduleName }: WalrusU
         )}
         <Button
           onClick={() => {
-            handlePublish(recipientAllowlist, cap_id, moduleName);
+            handlePublish(policyObject, cap_id, moduleName);
           }}
-          disabled={!info || !file || recipientAllowlist === ""}
+          disabled={!info || !file || policyObject === ""}
           aria-label="Encrypt and upload file"
         >
           Second step: Associate file to Sui object
