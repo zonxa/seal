@@ -10,11 +10,11 @@
 
 **Access control management**
 
-Packages should define `seal_approve*` functions in their modules to control access to the keys associated with their namespace of identities:
-- There can be multiple `seal_approve*` functions in a package, and each function can have different access control logic and input parameters.
-- The first parameter of `seal_approve*` functions must be the requested identity without the package ID prefix (e.g., `id: vector<u8>`).
-- `seal_approve*` functions should abort if access is not granted, and not return any value.
-- Preferably, `seal_approve*` functions should be defined as non-public `entry` functions, to support future upgrades without breaking backward compatibility.
+Packages should define `seal_approve*` functions in their modules to control access to the keys associated with their identity namespace. Guidelines for defining `seal_approve*` functions::
+- A package can include multiple `seal_approve*` functions, each implementing different access control logic and accepting different input parameters.
+- The first parameter must be the requested identity, excluding the package ID prefix. For example: `id: vector<u8>`.
+- If access is not granted, the function should abort without returning a value.
+- To support future upgrades and maintain backward compatibility, define `seal_approve*` functions as non-public `entry` functions whenever possible.
 
 See [move/patterns](./move/patterns) for examples and useful patterns.
 
@@ -28,12 +28,12 @@ sui client publish --gas-budget 100000000
 
 **Limitations**
 
-`seal_approve*` functions are evaluated on full nodes using the `dry_run_transaction_block` RPC call, which in turn, executes the Move code with its internal state of the chain.
-As full nodes execute transactions independently, different full nodes may evaluate `dry_run_transaction_block` differently.
-Specifically, developers should be aware that:
-- Changes to the onchain state may take time to propagate, and full nodes may not have the latest state.
-- `seal_approve*` functions are not evaluated atomically on the same state on all key servers. Access by a specific user should not depend on a state that changes very frequantly as different full nodes may see different versions of the chain.
-- `seal_approve*` functions must not rely on invariants that depend on the relative order of transactions in a checkpoint. E.g., in the following code, the intermediate values of the counters may be different on different full nodes since the execution of their `increment` operations may be interleaved.
+The `seal_approve*` functions are evaluated on full nodes using the `dry_run_transaction_block` RPC call. This call executes the associated Move code using the full node’s local view of the chain state. Because full nodes operate independently, the result of `dry_run_transaction_block` may vary across nodes based on differences in their internal state.
+
+When using `seal_approve*` functions, keep the following in mind:
+- Changes to onchain state may take time to propagate. As a result, full nodes may not always reflect the latest state.
+- `seal_approve*` functions are not evaluated atomically across all key servers. Avoid relying on frequently changing state to determine access, as different full nodes may observe different versions of the chain.
+- Do not rely on invariants that depend on the relative order of transactions within a checkpoint. For example, the following code assumes a specific ordering of increment operations, but full nodes may observe different intermediate counter values due to interleaved execution.
 
 ```move
 
@@ -52,25 +52,20 @@ entry fun seal_approve(id: vector<u8>, cnt1: &Counter, cnt2: &Counter) {
 }
 ```
 
-- `seal_approve*` functions cannot change the state (they should be side-effect free).
-- While `Random` is available to `seal_approve*` functions, the value it returns is not secure and not deterministic among different full nodes, and should not be used.
-- During Seal evaluation, only `seal_approve*` functions can be called directly, thus they should not assume composition with other PTB commands.
-
+- `seal_approve*` functions must be side-effect free and cannot modify onchain state.
+- Although the `Random` module is available, its output is not secure and not deterministic across full nodes. Avoid using it within `seal_approve*` functions.
+- During Seal evaluation, only `seal_approve*` functions can be invoked directly. These functions should not assume composition with other [PTB (Programmable Transaction Block)](https://docs.sui.io/concepts/transactions/prog-txn-blocks) commands.
 
 **Encryption and decryption**
 
-The recommended way for encrypting and decrypting data is to use the [Seal SDK](https://www.npmjs.com/package/@mysten/seal).
+The recommended way to encrypt and decrypt the data is to use the [Seal SDK](https://www.npmjs.com/package/@mysten/seal).
 
-First, the app should decide on the set of key servers to use.
-Key servers register onchain their name, public key and URL by creating a `KeyServer` object. 
-Referring to a key server is done with the object id of its `KeyServer`.
+First, the app must select the set of key servers it intends to use. Each key server registers its name, public key, and URL onchain by creating a `KeyServer` object. To reference a key server, use the object ID of its corresponding `KeyServer`. A common approach for app developers is to use a fixed, preconfigured set of key servers within their app. Alternatively, the app can support a dynamic selection of key servers, for example, allowing users to choose which servers to use. In this case, the app should display a list of available key servers along with their URLs. After the user selects one or more servers, the app must verify that each provided URL corresponds to the claimed key server.
 
-The common option for app developers is to use a fixed set of key servers that are pre-configured in their app.
-Alternatively, the app can use a dynamic set of key servers, e.g., chosen by the user. 
-In that case, the app should show the user the list of key servers and their URLs, and once the user selects the key servers to use, the app should verify that the provided URLs indeed link to the claimed key servers, see code below.
-(Note that anyone can create an onchain `KeyServer` object that points to, for example, `seal.mystenlabs.com`, but with a different public key. Thus during verification, the SDK fetches the object id from the published URL's endpoint `/v1/service` and compares it with the one of the onchain object, to protect against impersonation.)
-An app can retrieve the object ids of the allowlisted Seal key servers using 
-`getAllowlistedKeyServers()`, or alternatively an app/user defined list.
+> [!IMPORTANT]
+> Anyone can create an onchain `KeyServer` object that references a known URL (such as `seal.mystenlabs.com`) but uses a different public key. To prevent impersonation, the SDK performs a verification step: it fetches the object ID from the server’s `/v1/service` endpoint and compares it with the object ID registered onchain.
+
+Apps can retrieve a list of trusted (allowlisted) Seal key servers using the `getAllowlistedKeyServers()` function, or use a custom app-defined or user-defined list.
 
 Next, the app should create a `SealClient` object for the selected key servers.
 ```typescript
@@ -82,13 +77,15 @@ const client = new SealClient({
 });
 ```
 
-`verifyKeyServers` should be set to `true` if the app/user needs to verify that the provided URLs indeed link to the claimed key servers as discussed above.
-(Note that verification requires additional round-trips to the key servers, and preferably should be used when the app/user needs to verify the key servers on startup, and `false` otherwise.)
+Set `verifyKeyServers` to `true` if the app or user needs to confirm that the provided URLs correctly correspond to the claimed key servers, as described above. Note that enabling verification introduces additional round-trip requests to the key servers. For best performance, use this option primarily when verifying key servers at app startup. Set `verifyKeyServers` to `false` when verification is not required.
 
-Next, the app can call `encrypt` of `client` with the threshold, package id of the deployed contract with the `seal_approve*` functions,
-the id that corresponds to the policy, and the data to be encrypted.
-This function returns the encrypted object and the symmetric key used for encryption (i.e., the key of the DEM component of the KEM/DEM encryption).
-The latter can be ignored, or returned to the user as a backup for disaster recovery. Decryption given the backup key can be done using the CLI using the `symmetric-decrypt` function as in the CLI example below.
+Next, the app can call the `encrypt` method on the `client` instance. This function requires the following parameters:
+- the encryption threshold
+- the package id of the deployed contract containing the `seal_approve*` functions
+- the id associated with the access control policy
+- the data to encrypt
+
+The `encrypt` function returns two values: the encrypted object, and the symmetric key used for encryption (i.e., the key from the DEM component of the KEM/DEM scheme). The symmetric key can either be ignored or returned to the user as a backup for disaster recovery. If retained, the user can decrypt the data manually using the CLI and the `symmetric-decrypt` command, as shown in the example below.
 
 ```typescript
 const { encryptedObject: encryptedBytes, key: backupKey } = await client.encrypt({
@@ -99,17 +96,18 @@ const { encryptedObject: encryptedBytes, key: backupKey } = await client.encrypt
 });
 ```
 
-Note that the encryption does **not** hide the message size. 
-In case the message size is sensitive, one should append zeros to the message until the length does not reveal sensitive information.
+Note that the encryption does **not** conceal the size of the message. If message size is considered sensitive, pad the message with zeros until its length no longer reveals meaningful information.
 
 > [!NOTE]
-> One may use Seal to encrypt an ephemeral symmetric key that is used to encrypt the actual data. This can be useful for example for storing the encrypted content as an immutable data on Walrus, while storing the encrypted ephemeral key on Sui, allowing it to be changed over time (e.g., to use different key servers).
+> You may use Seal to encrypt an ephemeral symmetric key, which is then used to encrypt the actual data. This approach is useful when storing encrypted content as immutable data on Walrus while keeping the encrypted ephemeral key on Sui. By storing the key separately, you can rotate it over time, for example, to switch to a different set of key servers, without modifying the underlying content.
 
-Decryption is a more involved process.
-First, the app should create a `SessionKey` object for accessing the keys of a specific package.
-The user should confirm providing time-limited access to the keys by signing the request in the wallet.
-The resulting signature should be stored by the session key to complete its initialization.
-An initialized session key can be used for retrieving multiple decryption keys for the specific package without additional user confirmations.
+Decryption involves a few additional steps:
+- The app must create a `SessionKey` object to access the decryption keys for a specific package.
+- The user must approve the request by signing it in their wallet. This grants time-limited access to the associated keys.
+- The app stores the resulting signature in the `SessionKey` to complete its initialization.
+
+Once initialized, the session key can be used to retrieve multiple decryption keys for the specified package without requiring further user confirmation.
+
 ```typescript
 const sessionKey = new SessionKey({
     address: suiAddress,
@@ -121,10 +119,9 @@ const { signature } = await keypair.signPersonalMessage(message); // User confir
 sessionKey.setPersonalMessageSignature(signature); // Initialization complete
 ```
 
-The simplest way to decrypt is to call the client’s
-`decrypt` function. 
- This funtion expects a `Transaction` object that calls the relevant `seal_approve*` functions.
-This transaction must only call `seal_approve*` functions, and only from the same package.
+The simplest way to perform decryption is to call the client’s `decrypt` function. This function expects a `Transaction` object that invokes the relevant `seal_approve*` functions. The transaction must meet the following requirements:
+- It may only call `seal_approve*` functions.
+- All calls must be to  the same package.
 
 ```typescript
 // Create the Transaction for evaluating the seal_approve function.
@@ -144,9 +141,9 @@ const decryptedBytes = await client.decrypt({
 });
 ```
 
-Keys retrieved from Seal key servers are cached by `SealClient` for following decryptions (in case the same id is used by multiple encryptions).
-In addition, multiple keys can be retrieved in a batch and stored in the cache by calling the function `fetchKeys` with a multi-command PTB. This option is recommended when multiple keys are needed, to reduce the number of calls to Seal key servers.
-Since requests may be rate limited by key servers, developers are encouraged to design their applications and policies to minimize the number of requests.
+The `SealClient` caches keys retrieved from Seal key servers to optimize performance during subsequent decryptions, especially when the same id is used across multiple encryptions. 
+
+To retrieve multiple keys efficiently, use the `fetchKeys` function with a multi-command PTB. This approach is recommended when multiple keys are required, as it reduces the number of requests to the key servers. Because key servers may apply rate limiting, developers should design their applications and access policies to minimize the frequency of key retrieval requests.
 
 ```typescript
 await client.fetchKeys({
@@ -157,11 +154,9 @@ await client.fetchKeys({
 });
 ```
 
-See our [integration tests](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/test/unit/integration.test.ts) for an E2E example.
-Also, see our [example app](https://seal-example.vercel.app/) for a demonstration of allowlist/NFT gated content access.
+See our [integration tests](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/test/unit/integration.test.ts) for an E2E example. Also, see our [example app](https://seal-example.vercel.app/) for a demonstration of allowlist/NFT gated content access.
 
-On-chain decryption in Move is available as well given the derived keys.
-See [voting.move](./move/patterns/sources/voting.move) for an example.
+Onchain decryption in Move is available as well given the derived keys. See [voting.move](./move/patterns/sources/voting.move) for an example.
 
 **Mysten Labs Key Servers**
 
@@ -169,14 +164,15 @@ Mysten Labs maintains a set of key servers for the Seal project:
 - mysten-testnet-1: https://seal-key-server-testnet-1.mystenlabs.com
 - mysten-testnet-2: https://seal-key-server-testnet-2.mystenlabs.com
 
-While current access is permissive, rate-limiting requests to those servers is planned in the near future, targeting 1-2 requests per second per user.
+Currently, access to above key servers is permissive. However, rate limiting is planned for future, with a target of 4-5 requests per second per user.
 
 ## For key server operators
 
 ### Setup
 Use the `seal-cli` tool to generate a new master key using `cargo run --bin seal-cli genkey`.
 
-Key servers can be registered onchain to allow discoverability. The registration is done by calling the `register_and_transfer` function in the `seal::key_server` module, e.g.,
+Key servers can be registered onchain to enable discoverability. To register a key server, call the `register_and_transfer` function in the `seal::key_server` module. For example:
+
 ```shell
 sui client call --function register_and_transfer --module key_server --package 0xa7e6441835fcdead3242b3e083c4f2886a32d4dffb2dddab2eb80ed201a4df9b --args mysten-dev-1 https://seal-key-server-testnet-1.mystenlabs.com 0xa023acbf600401017ee17bf918106ea9911914ca017aa3ab9ab5c64beb9bb5236fd9d4d5b5645dc3bc0d4f732ed04fc60d14b9f37987fe5eeb4db07fc0982904ce1ed0b07607ae2e99086e141f6c6a1df6def5f5d434ca7c09856a3750c92969 --gas-budget 10000000
 ```
@@ -184,7 +180,7 @@ sui client call --function register_and_transfer --module key_server --package 0
 Run the server using `cargo run --bin key-server` with environment variables:
 - `MASTER_KEY` is the master secret key generated by the `seal-cli` tool.
 - `KEY_SERVER_OBJECT_ID` is the object id of the registered key server.
-- `NETWORK` is the network to connect to, e.g., `testnet`, `mainnet`, etc. Use the value `custom` for working with your own full node. In this case, the  variables `NODE_URL` and `GRAPHQL_URL` must be set as well with the URLs of the full node and the graphql endpoint, respectively. (Note that the GraphQL dependency will be removed in the future.)
+- `NETWORK` specifies the network to connect to, such as `testnet`, `mainnet`, or other supported environments. To use a custom full node, set `NETWORK` to `custom`. When using the `custom` option, you must also set the `NODE_URL` and `GRAPHQL_URL` environment variables with the URLs of your full node and GraphQL endpoint, respectively. Note that the GraphQL support is deprecated and will be removed in a future release.
 
 Example:
 ```shell
@@ -194,7 +190,8 @@ export NETWORK="testnet"
 cargo run --bin key-server
 ```
 
-Alternativelly Docker can be used to run the key server, e.g.,
+Alternativelly Docker can be used to run the key server. For example:
+
 ```shell
 docker build -t seal-key-server .
 docker run -p 2024:2024 -e MASTER_KEY="KYinoC5hVWeWqOUU9dw7PVHiROYFWB/nQZ55Kmytjig=" -e KEY_SERVER_OBJECT_ID="0x1ee708e0d09c31593a60bee444f8f36a5a3ce66f1409a9dfb12eb11ab254b06b" -e NETWORK="testnet" seal-key-server
@@ -217,11 +214,11 @@ or used in a data visualization and analytics tool like Grafana.
 
 ### Infrastructure requirements
 
-The key server is a lightweight service. It does not require storage and is stateless, allowing for horizontal scalability.
-However, it does require access to a trusted Full Node, preferably one that is nearby to minimize latency.
+The key server is a lightweight, stateless service that does not require persistent storage. Its stateless design supports horizontal scalability. The service must have access to a trusted full node, ideally one located nearby to reduce latency.
 
-The key server is initialized with an IBE master key, which should be securely stored and accessible only to the service (e.g., using a cloud KMS). Additionally, standard mitigations against denial-of-service attacks should be implemented to protect the service (e.g., rate limiting at the API gateway).
+The key server is initialized with an IBE master key, which must be securely stored and accessible only to the service, for example, using a cloud-based key management system (KMS), or a self-managed software or hardware vault.
 
+To protect the service against denial-of-service (DoS) attacks, implement standard mitigations such as rate limiting at the API gateway layer.
 
 ## The CLI
 
