@@ -8,7 +8,7 @@
 
 ### Overview
 
-The system uses a cryptographic primitive called *Identity-Based Encryption (IBE)* to encrypt the stored data. This detail is hidden from the developers and users, as Seal is oblivious to the data that it is used to encrypt and decrypt.
+Seal uses a cryptographic primitive called *Identity-Based Encryption (IBE)* to encrypt stored data. This design detail is abstracted away from both developers and users, as Seal does not have visibility into the data it helps secure.
 
 An [IBE scheme](https://en.wikipedia.org/wiki/Identity-based_encryption) consists of the following algorithms:
 - `Setup`: Generates a master secret key `msk` and a master public key `mpk`.

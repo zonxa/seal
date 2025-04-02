@@ -121,7 +121,7 @@ sessionKey.setPersonalMessageSignature(signature); // Initialization complete
 
 The simplest way to perform decryption is to call the client’s `decrypt` function. This function expects a `Transaction` object that invokes the relevant `seal_approve*` functions. The transaction must meet the following requirements:
 - It may only call `seal_approve*` functions.
-- All calls must originate from the same package.
+- All calls must be to  the same package.
 
 ```typescript
 // Create the Transaction for evaluating the seal_approve function.
@@ -141,7 +141,9 @@ const decryptedBytes = await client.decrypt({
 });
 ```
 
-The `SealClient` caches keys retrieved from Seal key servers to optimize performance during subsequent decryptions, especially when the same id is used across multiple encryptions. To retrieve multiple keys efficiently, use the `fetchKeys` function with a multi-command PTB. This approach is recommended when multiple keys are required, as it reduces the number of requests to the key servers. Because key servers may apply rate limiting, developers should design their applications and access policies to minimize the frequency of key retrieval requests.
+The `SealClient` caches keys retrieved from Seal key servers to optimize performance during subsequent decryptions, especially when the same id is used across multiple encryptions. 
+
+To retrieve multiple keys efficiently, use the `fetchKeys` function with a multi-command PTB. This approach is recommended when multiple keys are required, as it reduces the number of requests to the key servers. Because key servers may apply rate limiting, developers should design their applications and access policies to minimize the frequency of key retrieval requests.
 
 ```typescript
 await client.fetchKeys({
@@ -162,7 +164,7 @@ Mysten Labs maintains a set of key servers for the Seal project:
 - mysten-testnet-1: https://seal-key-server-testnet-1.mystenlabs.com
 - mysten-testnet-2: https://seal-key-server-testnet-2.mystenlabs.com
 
-Currently, access to above key servers is permissive. However, rate limiting is planned for future, with a target of 1–2 requests per second per user.
+Currently, access to above key servers is permissive. However, rate limiting is planned for future, with a target of 4-5 requests per second per user.
 
 ## For key server operators
 
