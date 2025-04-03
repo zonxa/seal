@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/aggregator1/v1': {
-        target: 'https://walrus-testnet-aggregator.trusted-point.com',
+        target: 'https://aggregator.walrus-testnet.walrus.space',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/aggregator/, ''),
@@ -23,8 +23,14 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/aggregator3/, ''),
       },
+      '/aggregator4/v1': {
+        target: 'https://walrus-testnet-aggregator.trusted-point.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/aggregator3/, ''),
+      },
       '/publisher1/v1': {
-        target: 'https://walrus-testnet-publisher.trusted-point.com',
+        target: 'https://publisher.walrus-testnet.walrus.space',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/publisher1/, ''),
@@ -37,6 +43,12 @@ export default defineConfig({
       },
       '/publisher3/v1': {
         target: 'https://walrus-testnet-publisher.redundex.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/publisher3/, ''),
+      },
+      '/publisher4/v1': {
+        target: 'https://walrus-testnet-publisher.trusted-point.com',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/publisher3/, ''),

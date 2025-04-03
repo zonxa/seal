@@ -53,12 +53,6 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
 
   const services: WalrusService[] = [
     {
-      id: 'service1',
-      name: 'trusted-point.com',
-      publisherUrl: '/publisher1',
-      aggregatorUrl: '/aggregator1',
-    },
-    {
       id: 'service2',
       name: 'staketab.org',
       publisherUrl: '/publisher2',
@@ -186,6 +180,7 @@ export function WalrusUpload({ policyObject, cap_id, moduleName }: WalrusUploadP
           return { info };
         });
       } else {
+        alert('Error publishing the blob on Walrus, please try again with a different service.');
         throw new Error('Something went wrong when storing the blob!');
       }
     });
