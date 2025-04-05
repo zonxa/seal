@@ -14,7 +14,15 @@
     },
     {
       "source": "/aggregator4/:path*",
-      "destination": "https://https://walrus-testnet-aggregator.trusted-point.com/:path*"
+      "destination": "https://walrus-testnet-aggregator.nodes.guru/:path*"
+    },
+    {
+      "source": "/aggregator5/:path*",
+      "destination": "https://aggregator.walrus.banansen.dev/:path*"
+    },
+    {
+      "source": "/aggregator6/:path*",
+      "destination": "https://walrus-testnet-aggregator.everstake.one/:path*"
     },
     {
       "source": "/publisher1/:path*",
@@ -30,7 +38,15 @@
     },
     {
       "source": "/publisher4/:path*",
-      "destination": "https://walrus-testnet-publisher.trusted-point.com/:path*"
+      "destination": "https://walrus-testnet-publisher.nodes.guru/:path*"
+    },
+    {
+      "source": "/publisher5/:path*",
+      "destination": "https://publisher.walrus.banansen.dev/:path*"
+    },
+    {
+      "source": "/publisher6/:path*",
+      "destination": "https://walrus-testnet-publisher.everstake.one/:path*"
     },
     {
       "source": "/(.*)",

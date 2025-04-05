@@ -9,7 +9,7 @@ export default defineConfig({
         target: 'https://aggregator.walrus-testnet.walrus.space',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/aggregator/, ''),
+        rewrite: (path) => path.replace(/^\/aggregator1/, ''),
       },
       '/aggregator2/v1': {
         target: 'https://wal-aggregator-testnet.staketab.org',
@@ -24,10 +24,22 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/aggregator3/, ''),
       },
       '/aggregator4/v1': {
-        target: 'https://walrus-testnet-aggregator.trusted-point.com',
+        target: 'https://walrus-testnet-aggregator.nodes.guru',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/aggregator3/, ''),
+        rewrite: (path) => path.replace(/^\/aggregator4/, ''),
+      },
+      '/aggregator5/v1': {
+        target: 'https://aggregator.walrus.banansen.dev',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/aggregator5/, ''),
+      },
+      '/aggregator6/v1': {
+        target: 'https://walrus-testnet-aggregator.everstake.one',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/aggregator6/, ''),
       },
       '/publisher1/v1': {
         target: 'https://publisher.walrus-testnet.walrus.space',
@@ -48,10 +60,22 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/publisher3/, ''),
       },
       '/publisher4/v1': {
-        target: 'https://walrus-testnet-publisher.trusted-point.com',
+        target: 'https://walrus-testnet-publisher.nodes.guru',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/publisher3/, ''),
+        rewrite: (path) => path.replace(/^\/publisher4/, ''),
+      },
+      '/publisher5/v1': {
+        target: 'https://publisher.walrus.banansen.dev',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/publisher5/, ''),
+      },
+      '/publisher6/v1': {
+        target: 'https://walrus-testnet-publisher.everstake.one',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/publisher6/, ''),
       },
     },
   },
