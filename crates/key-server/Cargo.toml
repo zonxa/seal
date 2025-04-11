@@ -16,13 +16,13 @@ serde.workspace = true
 serde_json.workspace = true
 hex.workspace = true
 bcs.workspace = true
-clap.workspace = true
 tracing.workspace = true
 sui_types.workspace = true
+mysten-service.workspace = true
+sui_sdk.workspace = true
+shared_crypto.workspace = true
 
-mysten-service = { git = "https://github.com/mystenlabs/sui", rev = "1f5fef23d09fb697fff9e83907c5871c08fb6c87", package = "mysten-service" }
-sui_sdk = { git = "https://github.com/mystenlabs/sui", rev = "1f5fef23d09fb697fff9e83907c5871c08fb6c87", package = "sui-sdk"}
-shared_crypto = { git = "https://github.com/MystenLabs/sui", rev = "1f5fef23d09fb697fff9e83907c5871c08fb6c87", package = "shared-crypto" }
+
 tokio = { version = "1.44.2", features = ["full"] }
 axum = { version = "0.7", features = ["macros"] }
 tower = "0.4.13"
