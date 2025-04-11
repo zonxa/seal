@@ -67,7 +67,7 @@ const CHECKPOINT_UPDATE_INTERVAL: Duration = Duration::from_secs(10);
 const RGP_UPDATE_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The maximum time to live for a session key.
-const SESSION_KEY_TTL_MAX: u16 = 10;
+const SESSION_KEY_TTL_MAX: u16 = 30;
 
 /// The 1% of the max budget.
 const GAS_BUDGET: u64 = 500_000_000;
