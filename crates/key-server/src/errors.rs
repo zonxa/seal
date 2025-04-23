@@ -1,5 +1,6 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -14,6 +15,8 @@ pub enum InternalError {
     InvalidSignature,
     InvalidSessionSignature,
     InvalidCertificate,
+    InvalidSDKVersion,
+    DeprecatedSDKVersion,
     Failure, // Internal error, try again later
 }
 
@@ -40,6 +43,10 @@ impl IntoResponse for InternalError {
             InternalError::InvalidSessionSignature => {
                 (StatusCode::FORBIDDEN, "Invalid session key signature")
             }
+            InternalError::InvalidSDKVersion => (StatusCode::FORBIDDEN, "Invalid SDK version"),
+            InternalError::DeprecatedSDKVersion => {
+                (StatusCode::FORBIDDEN, "Deprecated SDK version")
+            }
             InternalError::Failure => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Internal server error, please try again later",
@@ -65,6 +72,8 @@ impl InternalError {
             InternalError::OldPackageVersion => "OldPackageVersion",
             InternalError::InvalidSignature => "InvalidSignature",
             InternalError::InvalidSessionSignature => "InvalidSessionSignature",
+            InternalError::InvalidSDKVersion => "InvalidSDKVersion",
+            InternalError::DeprecatedSDKVersion => "DeprecatedSDKVersion",
             InternalError::Failure => "Failure",
         }
     }

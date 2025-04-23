@@ -1,11 +1,15 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+use crate::errors::InternalError::{DeprecatedSDKVersion, InvalidSDKVersion};
 use crate::externals::{current_epoch_time, duration_since, get_reference_gas_price};
 use crate::metrics::{call_with_duration, observation_callback, status_callback, Metrics};
 use crate::signed_message::{signed_message, signed_request};
 use crate::types::MasterKeyPOP;
 use anyhow::Result;
-use axum::http::HeaderMap;
+use axum::extract::Request;
+use axum::http::{HeaderMap, HeaderValue};
+use axum::middleware::{from_fn_with_state, map_response, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{extract::State, Json};
 use core::time::Duration;
@@ -24,6 +28,7 @@ use mysten_service::package_name;
 use mysten_service::package_version;
 use mysten_service::serve;
 use rand::thread_rng;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -74,6 +79,9 @@ const GAS_BUDGET: u64 = 500_000_000;
 
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The minimum version of the SDK that is required to use this service.
+const SDK_VERSION_REQUIREMENT: &str = ">=0.3.5";
+
 // The "session" certificate, signed by the user
 #[derive(Clone, Serialize, Deserialize, Debug)]
 struct Certificate {
@@ -121,6 +129,7 @@ struct Server {
     master_key: IbeMasterKey,
     key_server_object_id: ObjectID,
     key_server_object_id_sig: MasterKeyPOP,
+    sdk_version_requirement: VersionReq,
 }
 
 impl Server {
@@ -144,12 +153,16 @@ impl Server {
         let key_server_object_id_sig =
             create_proof_of_possession(&master_key, &key_server_object_id.into_bytes());
 
+        let sdk_version_requirement =
+            VersionReq::parse(SDK_VERSION_REQUIREMENT).expect("valid SDK version requirement");
+
         Server {
             sui_client,
             network,
             master_key,
             key_server_object_id,
             key_server_object_id_sig,
+            sdk_version_requirement,
         }
     }
 
@@ -461,13 +474,6 @@ async fn handle_fetch_key(
     let req_id = headers
         .get("Request-Id")
         .map(|v| v.to_str().unwrap_or_default());
-    let version = headers.get("Client-Sdk-Version");
-    let sdk_type = headers.get("Client-Sdk-Type");
-    let target_api_version = headers.get("Client-Target-Api-Version");
-    info!(
-        "Request id: {:?}, SDK version: {:?}, SDK type: {:?}, Target API version: {:?}",
-        req_id, version, sdk_type, target_api_version
-    );
 
     app_state.metrics.requests.inc();
     app_state.check_full_node_is_fresh(ALLOWED_STALENESS)?;
@@ -493,6 +499,7 @@ async fn handle_fetch_key(
 struct GetServiceResponse {
     service_id: ObjectID,
     pop: MasterKeyPOP,
+    version: String,
 }
 
 async fn handle_get_service(
@@ -502,6 +509,7 @@ async fn handle_get_service(
     Ok(Json(GetServiceResponse {
         service_id: app_state.server.key_server_object_id,
         pop: app_state.server.key_server_object_id_sig,
+        version: PACKAGE_VERSION.to_string(),
     }))
 }
 
@@ -529,6 +537,54 @@ impl MyState {
     fn reference_gas_price(&self) -> u64 {
         *self.reference_gas_price.borrow()
     }
+
+    fn validate_sdk_version(&self, version_string: &str) -> Result<(), InternalError> {
+        let version = Version::parse(version_string).map_err(|_| InvalidSDKVersion)?;
+        if !self.server.sdk_version_requirement.matches(&version) {
+            return Err(DeprecatedSDKVersion);
+        }
+        Ok(())
+    }
+}
+
+/// Middleware to validate the SDK version.
+async fn handle_request_headers(
+    state: State<MyState>,
+    request: Request,
+    next: Next,
+) -> Result<Response, InternalError> {
+    // Log the request id and SDK version
+    let version = request.headers().get("Client-Sdk-Version");
+
+    info!(
+        "Request id: {:?}, SDK version: {:?}, SDK type: {:?}, Target API version: {:?}",
+        request
+            .headers()
+            .get("Request-Id")
+            .map(|v| v.to_str().unwrap_or_default()),
+        version,
+        request.headers().get("Client-Sdk-Type"),
+        request.headers().get("Client-Target-Api-Version")
+    );
+
+    version
+        .ok_or(InvalidSDKVersion)
+        .and_then(|v| v.to_str().map_err(|_| InvalidSDKVersion))
+        .and_then(|v| state.validate_sdk_version(v).map_err(|_| InvalidSDKVersion))
+        .tap_err(|e| {
+            warn!("Invalid SDK version: {:?}", e);
+            state.metrics.observe_error(e.as_str());
+        })?;
+    Ok(next.run(request).await)
+}
+
+/// Middleware to add headers to all responses.
+async fn add_response_headers(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        "X-KeyServer-Version",
+        HeaderValue::from_static(PACKAGE_VERSION),
+    );
+    response
 }
 
 #[tokio::main]
@@ -585,8 +641,10 @@ async fn main() -> Result<()> {
         .allow_headers(Any);
 
     let app = get_mysten_service(package_name!(), package_version!())
+        .layer(map_response(add_response_headers))
         .route("/v1/fetch_key", post(handle_fetch_key))
         .route("/v1/service", get(handle_get_service))
+        .layer(from_fn_with_state(state.clone(), handle_request_headers))
         .with_state(state)
         .layer(cors);
 
