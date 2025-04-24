@@ -571,7 +571,7 @@ async fn handle_request_headers(
     version
         .ok_or(InvalidSDKVersion)
         .and_then(|v| v.to_str().map_err(|_| InvalidSDKVersion))
-        .and_then(|v| state.validate_sdk_version(v).map_err(|_| InvalidSDKVersion))
+        .and_then(|v| state.validate_sdk_version(v))
         .tap_err(|e| {
             warn!("Invalid SDK version: {:?}", e);
             state.metrics.observe_error(e.as_str());
@@ -642,10 +642,10 @@ async fn main() -> Result<()> {
         .allow_headers(Any);
 
     let app = get_mysten_service(package_name!(), package_version!())
-        .layer(map_response(add_response_headers))
         .route("/v1/fetch_key", post(handle_fetch_key))
         .route("/v1/service", get(handle_get_service))
         .layer(from_fn_with_state(state.clone(), handle_request_headers))
+        .layer(map_response(add_response_headers))
         .with_state(state)
         .layer(cors);
 
