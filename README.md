@@ -44,9 +44,10 @@ Even though Seal is supposed to be a generic and flexible secret management serv
 
 ### Upgrade policy
 
-We strive to maintain backward compatibility for Seal, and any breaking changes to the Key Server API and the TypeScript SDK will be communicated in advance both on GitHub and in the Seal Discord channel.
-We will also provide a migration path for existing users to upgrade to the new version.
-New versions of the Key Server will be published on GitHub under [Releases](https://github.com/MystenLabs/seal/releases) and will be tagged with the version number.
+Seal strives to maintain backward compatibility. Any breaking changes to the Key Server API or the TypeScript SDK will be communicated in advance on both GitHub and in the Seal Discord channel.
+We will provide a clear migration path for existing users to upgrade to new versions.
+New versions of the Key Server will be published under [GitHub Releases](https://github.com/MystenLabs/seal/releases) and tagged with the appropriate version number.
+Both the [SDK](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/src/key-server.ts#L31) and the [Key Server](https://github.com/MystenLabs/seal/blob/main/crates/key-server/src/server.rs#L85) are configured to expect specific versions from each other. Either component may reject messages from outdated or deprecated counterparties.
 
 ### Contact Us
 
