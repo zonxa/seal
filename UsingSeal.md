@@ -2,6 +2,7 @@
 
 - [Introduction](README.md)
 - [Seal Design](Design.md)
+- [Security Best Practices and Risk Mitigations](SecurityBestPractices.md)
 - [Seal Beta Terms of Service](TermsOfService.md)
 
 # Using Seal

@@ -56,4 +56,5 @@ For questions about Seal, use case discussions, or integration support, contact 
 ## More information 
 - [Seal Design](Design.md)
 - [Using Seal](UsingSeal.md)
+- [Security Best Practices and Risk Mitigations](SecurityBestPractices.md)
 - [Seal Beta Terms of Service](TermsOfService.md)
