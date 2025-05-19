@@ -67,7 +67,7 @@ Seal does not mandate the use of any specific key server. Instead, users can sel
 > [!IMPORTANT]
 > The set of key servers is **not** dynamic once the data is encrypted, and encrypted data cannot be changed to use a different set of servers.
 
-Secondly, a single key server can also be implemented using a multi-party computation (MPC) committee in a `t-out-of-n` configuration. This committee can consist of Sui validators or any other group of participants. We expect MPC-based key servers to be deployed in the near future. Users can choose to use these in addition to standalone key servers. In this setup, the participants in the MPC committee can change over time, allowing for dynamic membership.
+Secondly, a single key server can also be implemented using a multi-party computation (MPC) committee in a `t-out-of-n` configuration. This committee can consist of Sui validators or any other group of participants. This mechanism is not yet available, but we expect MPC-based key servers to be deployed in the near future. Users can choose to use these in addition to standalone key servers. In this setup, the participants in the MPC committee can change over time, allowing for dynamic membership.
 
 The security of encrypted data relies on the following assumptions:
 - **Key server integrity**: The Seal key servers are not compromised, or, in the case of threshold encryption, fewer than the required threshold are compromised. This includes both the Seal key servers and the Sui full nodes they depend on to evaluate the access policies.

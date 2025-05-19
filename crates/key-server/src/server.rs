@@ -1,11 +1,17 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+use crate::errors::InternalError::{
+    DeprecatedSDKVersion, InvalidSDKVersion, MissingRequiredHeader,
+};
 use crate::externals::{current_epoch_time, duration_since, get_reference_gas_price};
 use crate::metrics::{call_with_duration, observation_callback, status_callback, Metrics};
 use crate::signed_message::{signed_message, signed_request};
 use crate::types::MasterKeyPOP;
 use anyhow::Result;
-use axum::http::HeaderMap;
+use axum::extract::Request;
+use axum::http::{HeaderMap, HeaderValue};
+use axum::middleware::{from_fn_with_state, map_response, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{extract::State, Json};
 use core::time::Duration;
@@ -18,19 +24,22 @@ use fastcrypto::ed25519::{Ed25519PublicKey, Ed25519Signature};
 use fastcrypto::encoding::{Base64, Encoding};
 use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::VerifyingKey;
+use jsonrpsee::core::ClientError;
+use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
 use mysten_service::get_mysten_service;
 use mysten_service::metrics::start_basic_prometheus_server;
 use mysten_service::package_name;
 use mysten_service::package_version;
 use mysten_service::serve;
 use rand::thread_rng;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Instant;
-use sui_sdk::error::SuiRpcResult;
+use sui_sdk::error::{Error, SuiRpcResult};
 use sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI;
 use sui_sdk::types::base_types::{ObjectID, SuiAddress};
 use sui_sdk::types::signature::GenericSignature;
@@ -67,12 +76,15 @@ const CHECKPOINT_UPDATE_INTERVAL: Duration = Duration::from_secs(10);
 const RGP_UPDATE_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The maximum time to live for a session key.
-const SESSION_KEY_TTL_MAX: u16 = 10;
+const SESSION_KEY_TTL_MAX: u16 = 30;
 
 /// The 1% of the max budget.
 const GAS_BUDGET: u64 = 500_000_000;
 
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The minimum version of the SDK that is required to use this service.
+const SDK_VERSION_REQUIREMENT: &str = ">=0.3.5";
 
 // The "session" certificate, signed by the user
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -121,6 +133,7 @@ struct Server {
     master_key: IbeMasterKey,
     key_server_object_id: ObjectID,
     key_server_object_id_sig: MasterKeyPOP,
+    sdk_version_requirement: VersionReq,
 }
 
 impl Server {
@@ -144,12 +157,16 @@ impl Server {
         let key_server_object_id_sig =
             create_proof_of_possession(&master_key, &key_server_object_id.into_bytes());
 
+        let sdk_version_requirement =
+            VersionReq::parse(SDK_VERSION_REQUIREMENT).expect("valid SDK version requirement");
+
         Server {
             sui_client,
             network,
             master_key,
             key_server_object_id,
             key_server_object_id_sig,
+            sdk_version_requirement,
         }
     }
 
@@ -241,6 +258,22 @@ impl Server {
             .dry_run_transaction_block(tx_data)
             .await
             .map_err(|e| {
+                if let Error::RpcError(ClientError::Call(ref e)) = e {
+                    match e.code() {
+                        INVALID_PARAMS_CODE => {
+                            // A dry run will fail if called with a newly created object parameter that the FN has not yet seen.
+                            // In that case, the user gets a FORBIDDEN status response.
+                            debug!("Invalid parameter: This could be because the FN has not yet seen the object.");
+                            return InternalError::InvalidParameter;
+                        }
+                        METHOD_NOT_FOUND_CODE => {
+                            // This means that the seal_approve function is not found on the given module.
+                            debug!("Function not found: {:?}", e);
+                            return InternalError::InvalidPTB("The seal_approve function was not found on the module".to_string());
+                        }
+                        _ => {}
+                    }
+                }
                 warn!("Dry run execution failed ({:?}) (req_id: {:?})", e, req_id);
                 InternalError::Failure
             })?;
@@ -258,7 +291,7 @@ impl Server {
     #[allow(clippy::too_many_arguments)]
     async fn check_request(
         &self,
-        ptb_str: &str,
+        valid_ptb: &ValidPtb,
         enc_key: &ElGamalPublicKey,
         enc_verification_key: &ElgamalVerificationKey,
         request_signature: &Ed25519Signature,
@@ -267,21 +300,6 @@ impl Server {
         metrics: Option<&Metrics>,
         req_id: Option<&str>,
     ) -> Result<Vec<KeyId>, InternalError> {
-        debug!(
-            "Checking request for ptb_str: {:?}, cert {:?} (req_id: {:?})",
-            ptb_str, certificate, req_id
-        );
-        let ptb_b64 = Base64::decode(ptb_str).map_err(|_| InternalError::InvalidPTB)?;
-        let ptb: ProgrammableTransaction =
-            bcs::from_bytes(&ptb_b64).map_err(|_| InternalError::InvalidPTB)?;
-        let valid_ptb = ValidPtb::try_from(ptb.clone())?;
-
-        // Report the number of id's in the request to the metrics.
-        if let Some(m) = metrics {
-            m.requests_per_number_of_ids
-                .observe(valid_ptb.inner_ids().len() as f64);
-        }
-
         // Handle package upgrades: only call the latest version but use the first as the namespace
         let (first_pkg_id, last_pkg_id) =
             call_with_duration(metrics.map(|m| &m.fetch_pkg_ids_duration), || async {
@@ -302,7 +320,7 @@ impl Server {
         // Check all conditions
         self.check_signature(
             &first_pkg_id,
-            &ptb,
+            valid_ptb.ptb(),
             enc_key,
             enc_verification_key,
             request_signature,
@@ -312,15 +330,10 @@ impl Server {
         .await?;
 
         call_with_duration(metrics.map(|m| &m.check_policy_duration), || async {
-            self.check_policy(certificate.user, &valid_ptb, gas_price, req_id)
+            self.check_policy(certificate.user, valid_ptb, gas_price, req_id)
                 .await
         })
         .await?;
-
-        info!(
-            "Valid request: {}",
-            json!({ "user": certificate.user, "package_id": valid_ptb.pkg_id(), "req_id": req_id })
-        );
 
         // return the full id with the first package id as prefix
         Ok(valid_ptb.full_ids(&first_pkg_id))
@@ -453,29 +466,26 @@ impl Server {
     }
 }
 
-async fn handle_fetch_key(
-    State(app_state): State<MyState>,
-    headers: HeaderMap,
-    Json(payload): Json<FetchKeyRequest>,
-) -> Result<Json<FetchKeyResponse>, InternalError> {
-    let req_id = headers
-        .get("Request-Id")
-        .map(|v| v.to_str().unwrap_or_default());
-    let version = headers.get("Client-Sdk-Version");
-    let sdk_type = headers.get("Client-Sdk-Type");
-    let target_api_version = headers.get("Client-Target-Api-Version");
-    info!(
-        "Request id: {:?}, SDK version: {:?}, SDK type: {:?}, Target API version: {:?}",
-        req_id, version, sdk_type, target_api_version
-    );
-
-    app_state.metrics.requests.inc();
+async fn handle_fetch_key_internal(
+    app_state: &MyState,
+    payload: &FetchKeyRequest,
+    req_id: Option<&str>,
+    sdk_version: &str,
+) -> Result<Vec<KeyId>, InternalError> {
     app_state.check_full_node_is_fresh(ALLOWED_STALENESS)?;
+
+    let valid_ptb = ValidPtb::try_from_base64(&payload.ptb)?;
+
+    // Report the number of id's in the request to the metrics.
+    app_state
+        .metrics
+        .requests_per_number_of_ids
+        .observe(valid_ptb.inner_ids().len() as f64);
 
     app_state
         .server
         .check_request(
-            &payload.ptb,
+            &valid_ptb,
             &payload.enc_key,
             &payload.enc_verification_key,
             &payload.request_signature,
@@ -484,15 +494,43 @@ async fn handle_fetch_key(
             Some(&app_state.metrics),
             req_id,
         )
+        .await.tap_ok(|_| info!(
+            "Valid request: {}",
+            json!({ "user": payload.certificate.user, "package_id": valid_ptb.pkg_id(), "req_id": req_id, "sdk_version": sdk_version })
+        ))
+}
+
+async fn handle_fetch_key(
+    State(app_state): State<MyState>,
+    headers: HeaderMap,
+    Json(payload): Json<FetchKeyRequest>,
+) -> Result<Json<FetchKeyResponse>, InternalError> {
+    let req_id = headers
+        .get("Request-Id")
+        .map(|v| v.to_str().unwrap_or_default());
+    let sdk_version = headers
+        .get("Client-Sdk-Version")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+
+    app_state.metrics.requests.inc();
+
+    debug!(
+        "Checking request for ptb: {:?}, cert {:?} (req_id: {:?})",
+        payload.ptb, payload.certificate, req_id
+    );
+
+    handle_fetch_key_internal(&app_state, &payload, req_id, sdk_version)
         .await
-        .map(|full_id| Json(app_state.server.create_response(&full_id, &payload.enc_key)))
         .tap_err(|e| app_state.metrics.observe_error(e.as_str()))
+        .map(|full_id| Json(app_state.server.create_response(&full_id, &payload.enc_key)))
 }
 
 #[derive(Serialize, Deserialize)]
 struct GetServiceResponse {
     service_id: ObjectID,
     pop: MasterKeyPOP,
+    version: String,
 }
 
 async fn handle_get_service(
@@ -502,6 +540,7 @@ async fn handle_get_service(
     Ok(Json(GetServiceResponse {
         service_id: app_state.server.key_server_object_id,
         pop: app_state.server.key_server_object_id_sig,
+        version: PACKAGE_VERSION.to_string(),
     }))
 }
 
@@ -529,6 +568,54 @@ impl MyState {
     fn reference_gas_price(&self) -> u64 {
         *self.reference_gas_price.borrow()
     }
+
+    fn validate_sdk_version(&self, version_string: &str) -> Result<(), InternalError> {
+        let version = Version::parse(version_string).map_err(|_| InvalidSDKVersion)?;
+        if !self.server.sdk_version_requirement.matches(&version) {
+            return Err(DeprecatedSDKVersion);
+        }
+        Ok(())
+    }
+}
+
+/// Middleware to validate the SDK version.
+async fn handle_request_headers(
+    state: State<MyState>,
+    request: Request,
+    next: Next,
+) -> Result<Response, InternalError> {
+    // Log the request id and SDK version
+    let version = request.headers().get("Client-Sdk-Version");
+
+    info!(
+        "Request id: {:?}, SDK version: {:?}, SDK type: {:?}, Target API version: {:?}",
+        request
+            .headers()
+            .get("Request-Id")
+            .map(|v| v.to_str().unwrap_or_default()),
+        version,
+        request.headers().get("Client-Sdk-Type"),
+        request.headers().get("Client-Target-Api-Version")
+    );
+
+    version
+        .ok_or(MissingRequiredHeader("Client-Sdk-Version".to_string()))
+        .and_then(|v| v.to_str().map_err(|_| InvalidSDKVersion))
+        .and_then(|v| state.validate_sdk_version(v))
+        .tap_err(|e| {
+            warn!("Invalid SDK version: {:?}", e);
+            state.metrics.observe_error(e.as_str());
+        })?;
+    Ok(next.run(request).await)
+}
+
+/// Middleware to add headers to all responses.
+async fn add_response_headers(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        "X-KeyServer-Version",
+        HeaderValue::from_static(PACKAGE_VERSION),
+    );
+    response
 }
 
 #[tokio::main]
@@ -582,12 +669,18 @@ async fn main() -> Result<()> {
     let cors = CorsLayer::new()
         .allow_methods(Any)
         .allow_origin(Any)
-        .allow_headers(Any);
+        .allow_headers(Any)
+        .expose_headers(Any);
 
     let app = get_mysten_service(package_name!(), package_version!())
-        .route("/v1/fetch_key", post(handle_fetch_key))
-        .route("/v1/service", get(handle_get_service))
-        .with_state(state)
+        .merge(
+            axum::Router::new()
+                .route("/v1/fetch_key", post(handle_fetch_key))
+                .route("/v1/service", get(handle_get_service))
+                .layer(from_fn_with_state(state.clone(), handle_request_headers))
+                .layer(map_response(add_response_headers))
+                .with_state(state),
+        )
         .layer(cors);
 
     serve(app).await

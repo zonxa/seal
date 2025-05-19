@@ -99,7 +99,10 @@ const { encryptedObject: encryptedBytes, key: backupKey } = await client.encrypt
 Note that the encryption does **not** conceal the size of the message. If message size is considered sensitive, pad the message with zeros until its length no longer reveals meaningful information.
 
 > [!NOTE]
-> You may use Seal to encrypt an ephemeral symmetric key, which is then used to encrypt the actual data. This approach is useful when storing encrypted content as immutable data on Walrus while keeping the encrypted ephemeral key on Sui. By storing the key separately, you can rotate it over time, for example, to switch to a different set of key servers, without modifying the underlying content.
+> Seal supports encrypting an ephemeral symmetric key, which you can use to encrypt your actual content. This approach is useful when storing encrypted data immutably on Walrus while keeping the encrypted key separately on Sui. By managing the key separately, you can update access policies or rotate key servers without modifying the stored content.
+
+> [!TIP]
+> The `encryptedBytes` returned from the encryption call can be parsed using `EncryptedObject.parse(encryptedBytes)`. It returns an EncryptedObject instance that includes metadata such as the ID and other associated fields.
 
 Decryption involves a few additional steps:
 - The app must create a `SessionKey` object to access the decryption keys for a specific package.
@@ -118,6 +121,11 @@ const message = sessionKey.getPersonalMessage();
 const { signature } = await keypair.signPersonalMessage(message); // User confirms in wallet
 sessionKey.setPersonalMessageSignature(signature); // Initialization complete
 ```
+
+> [!NOTE]
+> Notes on Session Key
+> 1. You can also optioanlly initialize a `SessionKey` with a passed in Signer in the constructor. This is useful for classes that extend `Signer`, e.g. `EnokiSigner`. 
+> 2. You can optionally store the `SessionKey` object in [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) instead of localStorage if you would like to persist the SessionKey across tabs. See usage for `import` and `export` methods in the SessionKey class. 
 
 The simplest way to perform decryption is to call the client’s `decrypt` function. This function expects a `Transaction` object that invokes the relevant `seal_approve*` functions. The transaction must meet the following requirements:
 - It may only call `seal_approve*` functions.
@@ -141,6 +149,9 @@ const decryptedBytes = await client.decrypt({
 });
 ```
 
+> [!TIP]
+> To debug a transaction, call `dryRunTransactionBlock` directly with the transaction block.
+
 The `SealClient` caches keys retrieved from Seal key servers to optimize performance during subsequent decryptions, especially when the same id is used across multiple encryptions. 
 
 To retrieve multiple keys efficiently, use the `fetchKeys` function with a multi-command PTB. This approach is recommended when multiple keys are required, as it reduces the number of requests to the key servers. Because key servers may apply rate limiting, developers should design their applications and access policies to minimize the frequency of key retrieval requests.
@@ -156,7 +167,10 @@ await client.fetchKeys({
 
 See our [integration tests](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/test/unit/integration.test.ts) for an E2E example. Also, see our [example app](https://seal-example.vercel.app/) for a demonstration of allowlist/NFT gated content access.
 
-Onchain decryption in Move is available as well given the derived keys. See [voting.move](./move/patterns/sources/voting.move) for an example.
+On-chain decryption in Move is supported using derived keys. For an example, see [voting.move](./move/patterns/sources/voting.move).
+
+> [!TIP]
+> If a key server request fails with an `InvalidParameter` error, the cause may be a recently created on-chain object in the PTB input. The key server's full node may not have indexed it yet. Wait a few seconds and retry the request, as subsequent attempts should succeed once the node is in sync.
 
 **Mysten Labs Key Servers**
 
@@ -174,7 +188,7 @@ Use the `seal-cli` tool to generate a new master key using `cargo run --bin seal
 Key servers can be registered onchain to enable discoverability. To register a key server, call the `register_and_transfer` function in the `seal::key_server` module. For example:
 
 ```shell
-sui client call --function register_and_transfer --module key_server --package 0xa7e6441835fcdead3242b3e083c4f2886a32d4dffb2dddab2eb80ed201a4df9b --args mysten-dev-1 https://seal-key-server-testnet-1.mystenlabs.com 0xa023acbf600401017ee17bf918106ea9911914ca017aa3ab9ab5c64beb9bb5236fd9d4d5b5645dc3bc0d4f732ed04fc60d14b9f37987fe5eeb4db07fc0982904ce1ed0b07607ae2e99086e141f6c6a1df6def5f5d434ca7c09856a3750c92969 --gas-budget 10000000
+sui client call --function register_and_transfer --module key_server --package 0xe126f08d71c79d3e5619fc034da698d9986a76e6b5f2e0d4a00e068e6668ab8f --args mysten-dev-1 https://seal-key-server-testnet-1.mystenlabs.com 0xa023acbf600401017ee17bf918106ea9911914ca017aa3ab9ab5c64beb9bb5236fd9d4d5b5645dc3bc0d4f732ed04fc60d14b9f37987fe5eeb4db07fc0982904ce1ed0b07607ae2e99086e141f6c6a1df6def5f5d434ca7c09856a3750c92969 --gas-budget 10000000
 ```
 
 Run the server using `cargo run --bin key-server` with environment variables:
