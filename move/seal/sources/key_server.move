@@ -10,14 +10,20 @@ module seal::key_server;
 
 use std::string::String;
 use sui::{bls12381::{G2, g2_from_bytes}, group_ops::Element};
+use sui::dynamic_field as df;
 
 const EInvalidCap: u64 = 0;
 const EInvalidKeyType: u64 = 1;
-
+const EInvalidVersion: u64 = 2;
 const KeyTypeBonehFranklinBLS12381: u8 = 0;
 
 public struct KeyServer has key {
     id: UID,
+    first_version: u64,
+    last_version: u64,
+}
+
+public struct KeyServerV1 has store {
     name: String,
     url: String,
     key_type: u8,
@@ -29,7 +35,7 @@ public struct Cap has key {
     key_server_id: ID,
 }
 
-public fun register(
+public fun create_v1(
     name: String,
     url: String,
     key_type: u8,
@@ -40,13 +46,19 @@ public fun register(
     assert!(key_type == KeyTypeBonehFranklinBLS12381, EInvalidKeyType);
     let _ = g2_from_bytes(&pk);
 
-    let key_server = KeyServer {
+    let mut key_server = KeyServer {
         id: object::new(ctx),
+        first_version: 1,
+        last_version: 1,
+    };
+
+    let key_server_v1 = KeyServerV1 {
         name,
         url,
         key_type,
         pk,
     };
+    df::add(&mut key_server.id, 1, key_server_v1);
 
     let cap = Cap {
         id: object::new(ctx),
@@ -58,31 +70,40 @@ public fun register(
 }
 
 // Helper function to register a key server and transfer the cap to the caller.
-entry fun register_and_transfer(
+entry fun create_and_transfer_v1(
     name: String,
     url: String,
     key_type: u8,
     pk: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    let cap = register(name, url, key_type, pk, ctx);
+    let cap = create_v1(name, url, key_type, pk, ctx);
     transfer::transfer(cap, ctx.sender());
 }
 
+public fun v1(s: &KeyServer): &KeyServerV1 {
+    assert!(df::exists_(&s.id, 1), EInvalidVersion);
+    df::borrow(&s.id, 1)
+}
+
 public fun name(s: &KeyServer): String {
-    s.name
+    let v1 = v1(s);
+    v1.name
 }
 
 public fun url(s: &KeyServer): String {
-    s.url
+    let v1 = v1(s);
+    v1.url
 }
 
-public fun key_type(s: &KeyServer): u8 {
-    s.key_type
+public fun key_type(s: &mut KeyServer): u8 {
+    let v1 = v1(s);
+    v1.key_type
 }
 
 public fun pk(s: &KeyServer): &vector<u8> {
-    &s.pk
+    let v1 = v1(s);
+    &v1.pk
 }
 
 public fun id(s: &KeyServer): &UID {
@@ -90,13 +111,16 @@ public fun id(s: &KeyServer): &UID {
 }
 
 public fun pk_as_bf_bls12381(s: &KeyServer): Element<G2> {
-    assert!(s.key_type == KeyTypeBonehFranklinBLS12381, EInvalidKeyType);
-    g2_from_bytes(&s.pk)
+    let v1: &KeyServerV1 = v1(s);
+    assert!(v1.key_type == KeyTypeBonehFranklinBLS12381, EInvalidKeyType);
+    g2_from_bytes(&v1.pk)
 }
 
 public fun update(s: &mut KeyServer, cap: &Cap, url: String) {
     assert!(object::id(s) == cap.key_server_id, EInvalidCap);
-    s.url = url;
+    assert!(df::exists_(&s.id, 1), EInvalidVersion);
+    let v1: &mut KeyServerV1 = df::borrow_mut(&mut s.id, 1);
+    v1.url = url;
 }
 
 #[test_only]
@@ -116,7 +140,7 @@ fun test_flow() {
 
     let pk = g2_generator();
     let pk_bytes = *pk.bytes();
-    let cap = register(
+    let cap = create_v1(
         string::utf8(b"mysten"),
         string::utf8(b"https::/mysten-labs.com"),
         0,
