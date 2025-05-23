@@ -5,15 +5,14 @@
 //! It enables a symmetric key to be derived from the identity + the public key of a user and used to encrypt a fixed size message of length [KEY_LENGTH].
 
 use crate::utils::xor;
-use crate::{DST_POP, KEY_SIZE};
+use crate::{DST_ID, DST_KDF, DST_POP, KEY_SIZE};
 use fastcrypto::error::FastCryptoError::{GeneralError, InvalidInput};
 use fastcrypto::error::FastCryptoResult;
 use fastcrypto::groups::bls12381::{G1Element, G2Element, GTElement, Scalar};
 use fastcrypto::groups::{GroupElement, HashToGroupElement, Pairing, Scalar as GenericScalar};
-use fastcrypto::hmac::{hkdf_sha3_256, HkdfIkm};
+use fastcrypto::hash::{HashFunction, Sha3_256};
 use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::AllowedRng;
-use fastcrypto::traits::ToFromBytes;
 use sui_types::base_types::ObjectID;
 
 pub type MasterKey = Scalar;
@@ -23,6 +22,7 @@ pub type Nonce = G2Element;
 pub type Plaintext = [u8; KEY_SIZE];
 pub type Ciphertext = [u8; KEY_SIZE];
 pub type Randomness = Scalar;
+pub type EncryptedRandomness = [u8; KEY_SIZE];
 
 // Additional info for the key derivation. Contains the object id for the key server and the share index.
 pub type Info = (ObjectID, u8);
@@ -40,7 +40,7 @@ pub fn public_key_from_master_key(master_key: &MasterKey) -> PublicKey {
 
 /// Extract a user secret key from a master key and an id.
 pub fn extract(master_key: &MasterKey, id: &[u8]) -> UserSecretKey {
-    G1Element::hash_to_group_element(id) * master_key
+    hash_to_g1(id) * master_key
 }
 
 /// Verify that a user secret key is valid for a given public key and id.
@@ -49,9 +49,7 @@ pub fn verify_user_secret_key(
     id: &[u8],
     public_key: &PublicKey,
 ) -> FastCryptoResult<()> {
-    if user_secret_key.pairing(&G2Element::generator())
-        == G1Element::hash_to_group_element(id).pairing(public_key)
-    {
+    if user_secret_key.pairing(&G2Element::generator()) == hash_to_g1(id).pairing(public_key) {
         Ok(())
     } else {
         Err(InvalidInput)
@@ -72,7 +70,7 @@ pub fn encrypt_batched_deterministic(
         return Err(InvalidInput);
     }
 
-    let gid = G1Element::hash_to_group_element(id);
+    let gid = hash_to_g1(id);
     let gid_r = gid * randomness;
     let nonce = G2Element::generator() * randomness;
     Ok((
@@ -97,7 +95,7 @@ pub fn decrypt(
     id: &[u8],
     info: &Info,
 ) -> Plaintext {
-    let gid = G1Element::hash_to_group_element(id);
+    let gid = hash_to_g1(id);
     xor(
         ciphertext,
         &kdf(&secret_key.pairing(nonce), nonce, &gid, info),
@@ -121,13 +119,17 @@ pub fn decrypt_deterministic(
     id: &[u8],
     info: &Info,
 ) -> FastCryptoResult<Plaintext> {
-    let gid = G1Element::hash_to_group_element(id);
+    let gid = hash_to_g1(id);
     let gid_r = gid * randomness;
     let nonce = G2Element::generator() * randomness;
     Ok(xor(
         ciphertext,
         &kdf(&gid_r.pairing(public_key), &nonce, &gid, info),
     ))
+}
+
+pub(crate) fn hash_to_g1(id: &[u8]) -> G1Element {
+    G1Element::hash_to_group_element(&[DST_ID, id].concat())
 }
 
 /// Derive a random key from public inputs.
@@ -137,37 +139,30 @@ fn kdf(
     gid: &G1Element,
     (object_id, index): &Info,
 ) -> [u8; KEY_SIZE] {
-    let mut bytes = input.to_byte_array().to_vec(); // 576 bytes
-    bytes.extend_from_slice(&nonce.to_byte_array()); // 96 bytes
-    bytes.extend_from_slice(&gid.to_byte_array()); // 48 bytes
-
-    let mut info = object_id.to_vec();
-    info.extend_from_slice(&[*index]);
-
-    hkdf_sha3_256(
-        &HkdfIkm::from_bytes(&bytes).expect("not fixed length"),
-        &[], // no salt
-        &info,
-        KEY_SIZE,
-    )
-    .expect("kdf should not fail")
-    .try_into()
-    .expect("same length")
+    let mut hash = Sha3_256::new();
+    hash.update(DST_KDF);
+    hash.update(input.to_byte_array());
+    hash.update(nonce.to_byte_array());
+    hash.update(gid.to_byte_array());
+    hash.update(object_id.as_slice());
+    hash.update([*index]);
+    hash.finalize().digest
 }
 
 /// Encrypt the Randomness using a key.
-pub fn encrypt_randomness(randomness: &Randomness, key: &[u8; KEY_SIZE]) -> [u8; KEY_SIZE] {
+pub fn encrypt_randomness(randomness: &Randomness, key: &[u8; KEY_SIZE]) -> EncryptedRandomness {
     xor(key, &randomness.to_byte_array())
 }
 
 /// Decrypt the Randomness using a key and verify that the randomness was used to create the given nonce.
 pub fn decrypt_and_verify_nonce(
-    encrypted_randomness: &[u8; KEY_SIZE],
+    encrypted_randomness: &EncryptedRandomness,
     derived_key: &[u8; KEY_SIZE],
     nonce: &Nonce,
 ) -> FastCryptoResult<Randomness> {
     let randomness = Scalar::from_byte_array(&xor(derived_key, encrypted_randomness))?;
-    verify_nonce(&randomness, nonce).map(|()| randomness)
+    verify_nonce(&randomness, nonce)?;
+    Ok(randomness)
 }
 
 pub type ProofOfPossession = G1Element;
@@ -187,18 +182,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_kdf_alignment_with_ts() {
+    fn test_kdf_regression() {
         use fastcrypto::groups::GroupElement;
 
         let r = fastcrypto::groups::bls12381::Scalar::from(12345u128);
         let x = GTElement::generator() * r;
         let nonce = G2Element::generator() * r;
-        let gid = G1Element::hash_to_group_element(&[0]);
+        let gid = hash_to_g1(&[0]);
         let object_id = ObjectID::new([0; 32]);
 
         let derived_key = kdf(&x, &nonce, &gid, &(object_id, 42));
         let expected =
-            hex::decode("1963b93f076d0dc97cbb38c3864b2d6baeb87c7eb99139100fd775b0b09f668b")
+            hex::decode("89befdfd6aecdce1305ddbca891d1c29f0507cfd5225cd6b11e52e60f088ea87")
                 .unwrap();
         assert_eq!(expected, derived_key);
     }

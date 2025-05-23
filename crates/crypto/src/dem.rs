@@ -1,10 +1,11 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::dem::Purpose::{Encryption, MAC};
 use crate::utils::xor_unchecked;
-use crate::KEY_SIZE;
+use crate::{Ciphertext, EncryptionInput, KEY_SIZE};
 use fastcrypto::error::FastCryptoError;
-use fastcrypto::hmac::HmacKey;
+use fastcrypto::hmac::{hmac_sha3_256, HmacKey};
 use fastcrypto::{
     aes::{
         Aes256Gcm as ExternalAes256Gcm, AesKey, AuthenticatedCipher, GenericByteArray,
@@ -78,33 +79,78 @@ impl Hmac256Ctr {
 /// Encrypts the message in CTR mode using hmac_sha3_256 as a PRF.
 fn encrypt_in_ctr_mode(key: &[u8; KEY_SIZE], msg: &[u8]) -> Vec<u8> {
     // Derive encryption key
-    let encryption_key = hmac_sha3_256(key, &[1]);
     msg.chunks(KEY_SIZE)
         .enumerate()
-        .flat_map(|(i, ci)| xor_unchecked(ci, &hmac_sha3_256(&encryption_key, &to_bytes(i))))
+        .flat_map(|(i, ci)| xor_unchecked(ci, &hmac(Encryption, key, &to_bytes(i as u64))))
         .collect()
 }
 
 fn compute_mac(key: &[u8; KEY_SIZE], aad: &[u8], ciphertext: &[u8]) -> [u8; KEY_SIZE] {
-    // Derive MAC key
-    let mac_key = hmac_sha3_256(key, &[2]);
-
     // The length of the aad may vary, so add the length as a prefix to ensure uniqueness of the input.
-    hmac_sha3_256(&mac_key, &[&to_bytes(aad.len()), aad, ciphertext].concat())
+    hmac(
+        MAC,
+        key,
+        &[&to_bytes(aad.len() as u64), aad, ciphertext].concat(),
+    )
 }
 
-/// Convenience function for hmac_sha3_256.
-fn hmac_sha3_256(key: &[u8; KEY_SIZE], data: &[u8]) -> [u8; KEY_SIZE] {
-    fastcrypto::hmac::hmac_sha3_256(
+#[allow(clippy::upper_case_acronyms)]
+enum Purpose {
+    Encryption,
+    MAC,
+}
+
+impl Purpose {
+    fn tag(&self) -> &[u8] {
+        match self {
+            Encryption => b"HMAC-CTR-ENC",
+            MAC => b"HMAC-CTR-MAC",
+        }
+    }
+}
+
+fn hmac(purpose: Purpose, key: &[u8; KEY_SIZE], data: &[u8]) -> [u8; KEY_SIZE] {
+    let data = &[purpose.tag(), data].concat();
+    hmac_sha3_256(
         &HmacKey::from_bytes(key).expect("Never fails for 32 byte input"),
         data,
     )
     .digest
 }
 
-/// Convenience function for converting a usize to a byte array.
-fn to_bytes(n: usize) -> Vec<u8> {
-    bcs::to_bytes(&(n as u64)).expect("Never fails")
+/// Convenience function for converting an u64 to a byte array.
+fn to_bytes(n: u64) -> Vec<u8> {
+    bcs::to_bytes(&n).expect("Never fails")
+}
+
+impl EncryptionInput {
+    pub(crate) fn encrypt(self, key: &[u8; KEY_SIZE]) -> Ciphertext {
+        match self {
+            EncryptionInput::Aes256Gcm { data, aad } => {
+                let blob = Aes256Gcm::encrypt(&data, aad.as_ref().unwrap_or(&vec![]), key);
+                Ciphertext::Aes256Gcm { blob, aad }
+            }
+            EncryptionInput::Hmac256Ctr { data, aad } => {
+                let (blob, mac) = Hmac256Ctr::encrypt(&data, aad.as_ref().unwrap_or(&vec![]), key);
+                Ciphertext::Hmac256Ctr { blob, aad, mac }
+            }
+            EncryptionInput::Plain => Ciphertext::Plain,
+        }
+    }
+}
+
+impl Ciphertext {
+    pub(crate) fn decrypt(&self, key: &[u8; KEY_SIZE]) -> FastCryptoResult<Vec<u8>> {
+        match self {
+            Ciphertext::Aes256Gcm { blob, aad } => {
+                Aes256Gcm::decrypt(blob, aad.as_ref().unwrap_or(&vec![]), key)
+            }
+            Ciphertext::Hmac256Ctr { blob, aad, mac } => {
+                Hmac256Ctr::decrypt(blob, mac, aad.as_ref().unwrap_or(&vec![]), key)
+            }
+            Ciphertext::Plain => Ok(key.to_vec()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -191,9 +237,9 @@ mod tests {
                 .unwrap()
                 .try_into()
                 .unwrap();
-        let ciphertext: Vec<u8> = hex::decode("b0c4eee6fbd97a2fb86bbd1e0dafa47d2ce5c9e8975a50c2d9eae02ebede8fee6b6434e68584be475b89089fce4c451cbd4c0d6e00dbcae1241abaf237df2eccdd86b890d35e4e8ae9418386012891d8413483d64179ce1d7fe69ad25d546495df54a1").unwrap();
+        let ciphertext: Vec<u8> = hex::decode("feadb8c8f781036f86b6a9f436cac6f9f68ba8fc8b8444f0331a5820f78580f32034f698f7ce15f25defae1749f0131c0a8b8c5e751b96aacf507d0dbd4d7790440d196a339fcb8498ca7dd236014e353729b7aa2cf524284a8d2305d2378494eadd6f").unwrap();
         let mac: [u8; KEY_SIZE] =
-            hex::decode("5de3ffdd9d7a258e651ebdba7d80839df2e19ea40cd35b6e1b06375181a0c2f2")
+            hex::decode("85d498365972c3dc7a53f94232f9cb10dcc94eff064d6835d41d7a7536b47b51")
                 .unwrap()
                 .try_into()
                 .unwrap();
