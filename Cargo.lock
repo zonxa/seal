@@ -3917,7 +3917,6 @@ dependencies = [
  "chrono",
  "crypto",
  "fastcrypto",
- "futures",
  "hex",
  "jsonrpsee",
  "lru 0.13.0",

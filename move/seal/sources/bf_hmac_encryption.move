@@ -399,7 +399,7 @@ fun test_parse_encrypted_object() {
 fun test_seal_decrypt() {
     use sui::bls12381::{g1_from_bytes};
     use sui::test_scenario::{Self, next_tx, ctx};
-    use seal::key_server::{create_v1, destroy_cap};
+    use seal::key_server::{register, destroy_cap};
     use std::string;
 
     let addr1 = @0xA;
@@ -407,8 +407,8 @@ fun test_seal_decrypt() {
 
     // sk0 = 3c185eb32f1ab43a013c7d84659ec7b59791ca76764af4ee8d387bf05621f0c7
     let pk0 =
-        x"a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161";
-    let cap0 = create_v1(
+        x"aeb258b9fb9a2f29f74eb0a1a895860bb1c6ba3f9ea7075366de159e4764413e9ec0597ac9c0dad409723935440a45f40eee4728630ae3ea40a68a819375bba1d78d7810f901d8a469d785d00cfed6bd28f01d41e49c5652d924e9d19fddcf62";
+    let cap0 = register(
         string::utf8(b"mysten0"),
         string::utf8(b"https://mysten-labs.com"),
         0,
@@ -420,8 +420,8 @@ fun test_seal_decrypt() {
 
     // sk1 = 09ba20939b2300c5ffa42e71809d3dc405b1e68259704b3cb8e04c36b0033e24
     let pk1 =
-        x"a9ce55cfa7009c3116ea29341151f3c40809b816f4ad29baa4f95c1bb23085ef02a46cf1ae5bd570d99b0c6e9faf525306224609300b09e422ae2722a17d2a969777d53db7b52092e4d12014da84bffb1e845c2510e26b3c259ede9e42603cd6";
-    let cap1 = create_v1(
+        x"b1076a26f4f82f39d0e767fcd2118659362afe40bce4e8d553258c86756bb74f888bca79f2d6b71edf6e25af89efa83713a223b48a19d2e551897ac92ac7458336cd489be3be025e348ca93f4c94d22594f96f0e08990e51a7de9da8ff29c98f";
+    let cap1 = register(
         string::utf8(b"mysten1"),
         string::utf8(b"https://mysten-labs.com"),
         0,
@@ -433,8 +433,8 @@ fun test_seal_decrypt() {
 
     // sk2 = 692071ce90e2eea0ddfe16c5656879fa18b094f0eaa759759f4c3bb20db58cf3
     let pk2 =
-        x"93b3220f4f3a46fb33074b590cda666c0ebc75c7157d2e6492c62b4aebc452c29f581361a836d1abcbe1386268a5685103d12dec04aadccaebfa46d4c92e2f2c0381b52d6f2474490d02280a9e9d8c889a3fce2753055e06033f39af86676651";
-    let cap2 = create_v1(
+        x"95fcb465af3791f31d53d80db6c8dcf9f83a419b2570614ecfbb068f47613da17cb9ffc66bb052b9546f17196929538f0bd2d38e1f515d9916e2db13dc43e0ccbd4cb3d7cbb13ffecc0b68b37481ebaaaa17cad18096a9c2c27a797f17d78623";
+    let cap2 = register(
         string::utf8(b"mysten2"),
         string::utf8(b"https://mysten-labs.com"),
         0,
