@@ -3,7 +3,7 @@ name = "seal"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
-# published-at = "0xfe2c71f4dc19cb596a5042bca40b9cd4b1e3517b37bc8c21491c3be33b3056af"
+# published-at = "0xac7890f847ac6973ca615af9d7bbb642541f175e35e340e5d1241d0ffda9ed04"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
