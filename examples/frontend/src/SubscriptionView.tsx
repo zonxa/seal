@@ -12,6 +12,7 @@ import { AlertDialog, Button, Card, Dialog, Flex } from '@radix-ui/themes';
 import { coinWithBalance, Transaction } from '@mysten/sui/transactions';
 import { fromHex, SUI_CLOCK_OBJECT_ID } from '@mysten/sui/utils';
 import { SealClient, SessionKey, getAllowlistedKeyServers } from '@mysten/seal';
+import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { useParams } from 'react-router-dom';
 import { downloadAndDecrypt, getObjectExplorerLink, MoveCallConstructor } from './utils';
 
@@ -217,6 +218,7 @@ const FeedsToSubscribe: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
       address: suiAddress,
       packageId,
       ttlMin: TTL_MIN,
+      client: new SuiGraphQLClient({ url: 'https://sui-testnet.mystenlabs.com/graphql', }),
     });
 
     try {

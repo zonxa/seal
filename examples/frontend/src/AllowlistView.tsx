@@ -5,6 +5,7 @@ import { useSignPersonalMessage, useSuiClient } from '@mysten/dapp-kit';
 import { useNetworkVariable } from './networkConfig';
 import { AlertDialog, Button, Card, Dialog, Flex, Grid } from '@radix-ui/themes';
 import { fromHex } from '@mysten/sui/utils';
+import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { Transaction } from '@mysten/sui/transactions';
 import { getAllowlistedKeyServers, SealClient, SessionKey, type SessionKeyType } from '@mysten/seal';
 import { useParams } from 'react-router-dom';
@@ -81,7 +82,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     const imported: SessionKeyType = await get('sessionKey');
 
     if (imported) {
-      const currentSessionKey = await SessionKey.import(imported, {});
+      const currentSessionKey = await SessionKey.import(imported, { client: new SuiGraphQLClient({ url: 'https://sui-testnet.mystenlabs.com/graphql', }),});
       console.log('loaded currentSessionKey', currentSessionKey);
       if (
         currentSessionKey &&
@@ -110,6 +111,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
       address: suiAddress,
       packageId,
       ttlMin: TTL_MIN,
+      client: new SuiGraphQLClient({ url: 'https://sui-testnet.mystenlabs.com/graphql', }),
     });
 
     try {
