@@ -53,7 +53,7 @@ Both the [SDK](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/src
 
 For questions about Seal, use case discussions, or integration support, contact the Seal team on [Sui Discord](https://discord.com/channels/916379725201563759/1356767654265880586).
 
-## More information 
+## More information
 - [Seal Design](Design.md)
 - [Using Seal](UsingSeal.md)
 - [Security Best Practices and Risk Mitigations](SecurityBestPractices.md)

@@ -20,7 +20,7 @@ Packages should define `seal_approve*` functions in their modules to control acc
 See [move/patterns](./move/patterns) for examples and useful patterns.
 
 As `seal_approve*` functions are standard Move functions, they can be tested locally using Move tests.
-Building and publishing the code can be done using the [`Sui CLI`](https://docs.sui.io/references/cli), e.g.,: 
+Building and publishing the code can be done using the [`Sui CLI`](https://docs.sui.io/references/cli), e.g.,:
 ```shell
 cd examples/move
 sui move build
@@ -134,7 +134,7 @@ sessionKey.setPersonalMessageSignature(signature); // Initialization complete
 > Notes on Session Key
 > 1. You can also optionally initialize a `SessionKey` with a passed in Signer in the constructor. This is useful for classes that extend `Signer`, e.g. `EnokiSigner`.
 > 2. You can optionally set an `mvr_name` value in the `SessionKey`. This should be the [Move Package Registry](https://www.moveregistry.com/) name for the package. Seal requires the MVR name to be registered to the first version of the package for this to work. If this is set, the message shown to the user in the wallet would use the much more readable MVR package name instead of `packageId`.
-> 3. You can optionally store the `SessionKey` object in [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) instead of localStorage if you would like to persist the SessionKey across tabs. See usage for `import` and `export` methods in the SessionKey class. 
+> 3. You can optionally store the `SessionKey` object in [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) instead of localStorage if you would like to persist the SessionKey across tabs. See usage for `import` and `export` methods in the SessionKey class.
 
 The simplest way to perform decryption is to call the client’s `decrypt` function. This function expects a `Transaction` object that invokes the relevant `seal_approve*` functions. The transaction must meet the following requirements:
 - It may only call `seal_approve*` functions.
@@ -144,12 +144,12 @@ The simplest way to perform decryption is to call the client’s `decrypt` funct
 // Create the Transaction for evaluating the seal_approve function.
 const tx = new Transaction();
 tx.moveCall({
-    target: `${packageId}::${moduleName}::seal_approve`, 
+    target: `${packageId}::${moduleName}::seal_approve`,
     arguments: [
         tx.pure.vector("u8", fromHEX(id)),
         // other arguments
    ]
- });  
+ });
 const txBytes = tx.build( { client: suiClient, onlyTransactionKind: true })
 const decryptedBytes = await client.decrypt({
     data: encryptedBytes,
@@ -161,7 +161,7 @@ const decryptedBytes = await client.decrypt({
 > [!TIP]
 > To debug a transaction, call `dryRunTransactionBlock` directly with the transaction block.
 
-The `SealClient` caches keys retrieved from Seal key servers to optimize performance during subsequent decryptions, especially when the same id is used across multiple encryptions. 
+The `SealClient` caches keys retrieved from Seal key servers to optimize performance during subsequent decryptions, especially when the same id is used across multiple encryptions.
 
 To retrieve multiple keys efficiently, use the `fetchKeys` function with a multi-command PTB. This approach is recommended when multiple keys are required, as it reduces the number of requests to the key servers. Because key servers may apply rate limiting, developers should design their applications and access policies to minimize the frequency of key retrieval requests.
 
@@ -219,7 +219,7 @@ Alternatively, Docker can be used to run the key server. For example:
 docker build -t seal-key-server .
 docker run -p 2024:2024 -e MASTER_KEY="KYinoC5hVWeWqOUU9dw7PVHiROYFWB/nQZ55Kmytjig=" -e KEY_SERVER_OBJECT_ID="0x1ee708e0d09c31593a60bee444f8f36a5a3ce66f1409a9dfb12eb11ab254b06b" -e NETWORK="testnet" seal-key-server
 ```
-<!-- 
+<!--
 Example of a request:
 ```
 curl http://0.0.0.0:2024/health
@@ -264,7 +264,7 @@ Publickey: 95fcb465af3791f31d53d80db6c8dcf9f83a419b2570614ecfbb068f47613da17cb9f
 
 For this example, assume that the onchain object ids for the three `KeyServer`s are `0x1`, `0x2`, and `0x3` respectively.
 Also, assume that the package id is `0x0` and the threshold in use is 2.
-Using the above public keys, we can now encrypt the message `54686520646966666572656e6365206265747765656e2061204d697261636c6520616e64206120466163742069732065786163746c792074686520646966666572656e6365206265747765656e2061206d65726d61696420616e642061207365616c` under the id `53e66d756e6472206672f3f069`.  
+Using the above public keys, we can now encrypt the message `54686520646966666572656e6365206265747765656e2061204d697261636c6520616e64206120466163742069732065786163746c792074686520646966666572656e6365206265747765656e2061206d65726d61696420616e642061207365616c` under the id `53e66d756e6472206672f3f069`.
 
 ```shell
 cargo run --bin seal-cli encrypt-aes --message 54686520646966666572656e6365206265747765656e2061204d697261636c6520616e64206120466163742069732065786163746c792074686520646966666572656e6365206265747765656e2061206d65726d61696420616e642061207365616c --package-id 0x0 --id 53e66d756e6472206672f3f069 --threshold 2 aeb258b9fb9a2f29f74eb0a1a895860bb1c6ba3f9ea7075366de159e4764413e9ec0597ac9c0dad409723935440a45f40eee4728630ae3ea40a68a819375bba1d78d7810f901d8a469d785d00cfed6bd28f01d41e49c5652d924e9d19fddcf62 b1076a26f4f82f39d0e767fcd2118659362afe40bce4e8d553258c86756bb74f888bca79f2d6b71edf6e25af89efa83713a223b48a19d2e551897ac92ac7458336cd489be3be025e348ca93f4c94d22594f96f0e08990e51a7de9da8ff29c98f 95fcb465af3791f31d53d80db6c8dcf9f83a419b2570614ecfbb068f47613da17cb9ffc66bb052b9546f17196929538f0bd2d38e1f515d9916e2db13dc43e0ccbd4cb3d7cbb13ffecc0b68b37481ebaaaa17cad18096a9c2c27a797f17d78623 -- 0x1 0x2 0x3
@@ -303,7 +303,7 @@ User secret key: 97c30ec9dd6dafa187b732004a4d33414446115af35a1b1c0eb78af094f6e0d
 User secret key: 8547bf7a70f7c1f3ad4070af8bc969f4afb82eddfcdca129fcedd6b7df1c91527ccd8d35dd33d0552cd95ba302ee6166
 ```
 
-Using these extracted keys, we can now decrypt the encrypted object. Since we set the threshold to 2, we need to provide the keys from two servers, and here, we use the first two. 
+Using these extracted keys, we can now decrypt the encrypted object. Since we set the threshold to 2, we need to provide the keys from two servers, and here, we use the first two.
 ```shell
 cargo run --bin seal-cli decrypt 0000000000000000000000000000000000000000000000000000000000000000000d53e66d756e6472206672f3f069030000000000000000000000000000000000000000000000000000000000000001010000000000000000000000000000000000000000000000000000000000000002020000000000000000000000000000000000000000000000000000000000000003030200841b3a59241e099e8b8d9cec1d531b1e8fe4b4170433e30d9aaa9fc764201f69e589a0b2a0e65bfb279d4b25ee1ce8141812bfb785abdb05134c3958f53c2e81e7bc06e5c1f1ebd7e489b5cf652216b13e6b7c2b13da70a4a7c05c3544a1ddf703b627cb3268d74c74ead83fb827c60fa23c1d192fb8a7db50ea8721bf7c95bd1748b5ed7da6873f4a5b539cb16085e5cd174206db776c04902c7d8c02d6fa47aada89c2fa0692973a83a7a900f2b0dd7f7475e55095d0df7b0483ae1192761d368985e51d72597df02764c654536130c905a8de4a6c9169643e9dd01efab17a9200723b7d7b2ede8924cfb3687a0c41599b87bebc9d913d8eb81a2027ba8286a7b2cd9f5303b6b551fa545189e2f13cb65642b66595ca4256f42cdda2ac78af39abde06184da29131437e1417ebb35c7136d2c74b8ab9fa4147077bbcdbfafc2b05458792eefe0424fedef10247b8b3c787e7772800 b882fccc1f021c3b995e63a1f7329fcf71f750844195125e6a6b319dde9a7afc24b0c1a29d5a55f5908cf440dd7b3da3 97c30ec9dd6dafa187b732004a4d33414446115af35a1b1c0eb78af094f6e0d4d06830d5d7be9140cbcb05c63aaf7e28 -- 0x1 0x2
 ```

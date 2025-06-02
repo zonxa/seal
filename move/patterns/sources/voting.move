@@ -8,7 +8,7 @@
 ///
 /// This is an example of on-chain decryption. Other use cases of this include auctions, timelocked voting, etc.
 ///
-/// This pattern does NOT implement versioning, please see other patterns for 
+/// This pattern does NOT implement versioning, please see other patterns for
 /// examples of versioning.
 ///
 module patterns::voting;
