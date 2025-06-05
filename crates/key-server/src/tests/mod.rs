@@ -1,7 +1,7 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::externals::{add_latest, add_package};
+use crate::externals::{add_package, add_upgraded_package};
 use crate::types::Network;
 use crate::Server;
 use crypto::ibe;
@@ -101,8 +101,11 @@ impl SealTestCluster {
     pub async fn publish(&mut self, module: &str) -> (ObjectID, ObjectID) {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.extend(["..", "..", "move", module]);
-        let compiled_package = BuildConfig::new_for_testing().build(&path).unwrap();
+        self.publish_path(path).await
+    }
 
+    pub async fn publish_path(&mut self, path: PathBuf) -> (ObjectID, ObjectID) {
+        let compiled_package = BuildConfig::new_for_testing().build(&path).unwrap();
         // Publish package
         let builder = self.cluster.sui_client().transaction_builder();
         let tx = builder
@@ -147,10 +150,8 @@ impl SealTestCluster {
         &mut self,
         package_id: ObjectID,
         upgrade_cap: ObjectID,
-        module: &str,
+        path: PathBuf,
     ) -> ObjectID {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.extend(["..", "..", "move", module]);
         let compiled_package = BuildConfig::new_for_testing().build(&path).unwrap();
 
         // Publish package
@@ -184,7 +185,7 @@ impl SealTestCluster {
             .unwrap();
 
         // Add new package id to internal registry
-        add_latest(package_id, new_package_id);
+        add_upgraded_package(package_id, new_package_id);
 
         new_package_id
     }
@@ -303,7 +304,9 @@ impl SealTestCluster {
 #[tokio::test]
 async fn test_pkg_upgrade() {
     let mut setup = SealTestCluster::new(1, 1).await;
-    let (package_id, upgrade_cap) = setup.publish("patterns").await;
-    let new_package_id = setup.upgrade(package_id, upgrade_cap, "patterns").await;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests/whitelist_v1");
+    let (package_id, upgrade_cap) = setup.publish_path(path).await;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests/whitelist_v2");
+    let new_package_id = setup.upgrade(package_id, upgrade_cap, path).await;
     assert_ne!(package_id, new_package_id);
 }
