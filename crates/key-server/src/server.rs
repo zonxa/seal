@@ -9,7 +9,7 @@ use crate::mvr::mvr_forward_resolution;
 use crate::signed_message::{signed_message, signed_request};
 use crate::types::MasterKeyPOP;
 use anyhow::Result;
-use axum::extract::Request;
+use axum::extract::{Query, Request};
 use axum::http::{HeaderMap, HeaderValue};
 use axum::middleware::{from_fn_with_state, map_response, Next};
 use axum::response::Response;
@@ -36,6 +36,7 @@ use rand::thread_rng;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::sync::Arc;
@@ -135,7 +136,9 @@ struct Server {
     sui_client: SuiClient,
     network: Network,
     master_key: IbeMasterKey,
+    legacy_key_server_object_id: ObjectID,
     key_server_object_id: ObjectID,
+    legacy_key_server_object_id_sig: MasterKeyPOP,
     key_server_object_id_sig: MasterKeyPOP,
     sdk_version_requirement: VersionReq,
 }
@@ -144,6 +147,7 @@ impl Server {
     async fn new(
         master_key: IbeMasterKey,
         network: Network,
+        legacy_key_server_object_id: ObjectID,
         key_server_object_id: ObjectID,
     ) -> Self {
         let sui_client = SuiClientBuilder::default()
@@ -158,6 +162,9 @@ impl Server {
             network
         );
 
+        let legacy_key_server_object_id_sig =
+            create_proof_of_possession(&master_key, &legacy_key_server_object_id.into_bytes());
+
         let key_server_object_id_sig =
             create_proof_of_possession(&master_key, &key_server_object_id.into_bytes());
 
@@ -168,7 +175,9 @@ impl Server {
             sui_client,
             network,
             master_key,
+            legacy_key_server_object_id,
             key_server_object_id,
+            legacy_key_server_object_id_sig,
             key_server_object_id_sig,
             sdk_version_requirement,
         }
@@ -549,11 +558,36 @@ struct GetServiceResponse {
 
 async fn handle_get_service(
     State(app_state): State<MyState>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<GetServiceResponse>, InternalError> {
     app_state.metrics.service_requests.inc();
+    let (service_id, pop) = match params.get("service_id") {
+        Some(id) => {
+            let object_id =
+                ObjectID::from_hex_literal(id).map_err(|_| InternalError::InvalidServiceId)?;
+            if object_id == app_state.server.key_server_object_id {
+                (
+                    app_state.server.key_server_object_id,
+                    app_state.server.key_server_object_id_sig,
+                )
+            } else if object_id == app_state.server.legacy_key_server_object_id {
+                (
+                    app_state.server.legacy_key_server_object_id,
+                    app_state.server.legacy_key_server_object_id_sig,
+                )
+            } else {
+                return Err(InternalError::InvalidServiceId);
+            }
+        }
+        None => (
+            app_state.server.legacy_key_server_object_id,
+            app_state.server.legacy_key_server_object_id_sig,
+        ),
+    };
+
     Ok(Json(GetServiceResponse {
-        service_id: app_state.server.key_server_object_id,
-        pop: app_state.server.key_server_object_id_sig,
+        service_id,
+        pop,
         version: PACKAGE_VERSION.to_string(),
     }))
 }
@@ -640,6 +674,9 @@ async fn main() -> Result<()> {
     } else {
         Hex::decode(&master_key).expect("MASTER_KEY should be hex encoded")
     };
+    // TODO: remove this when the legacy key server is no longer needed
+    let legacy_object_id =
+        env::var("LEGACY_KEY_SERVER_OBJECT_ID").expect("LEGACY_KEY_SERVER_OBJECT_ID must be set");
     let object_id = env::var("KEY_SERVER_OBJECT_ID").expect("KEY_SERVER_OBJECT_ID must be set");
     let network = env::var("NETWORK")
         .map(|n| Network::from_str(&n))
@@ -660,7 +697,8 @@ async fn main() -> Result<()> {
         IbeMasterKey::from_byte_array(&bytes.try_into().expect("Invalid MASTER_KEY length"))
             .expect("Invalid MASTER_KEY value"),
         network,
-        ObjectID::from_hex_literal(&object_id).expect("Invalid KEY_SERVER_OBJECT_ID"),
+        ObjectID::from_hex_literal(&legacy_object_id).expect("Invalid KEY_SERVER_OBJECT_ID"),
+        ObjectID::from_hex_literal(&object_id).expect("Invalid NEW_KEY_SERVER_OBJECT_ID"),
     )
     .await;
     let server = Arc::new(s);
