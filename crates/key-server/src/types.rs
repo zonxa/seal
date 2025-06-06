@@ -3,6 +3,7 @@
 
 use crypto::elgamal;
 use crypto::ibe;
+use serde::{Deserialize, Serialize};
 
 /// The Identity-based encryption types.
 pub type IbeMasterKey = ibe::MasterKey;
@@ -17,7 +18,7 @@ pub type ElgamalVerificationKey = elgamal::VerificationKey<IbePublicKey>;
 /// Proof-of-possession of a key-servers master key.
 pub type MasterKeyPOP = ibe::ProofOfPossession;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Network {
     Devnet,
     Testnet,

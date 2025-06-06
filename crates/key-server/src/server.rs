@@ -3,12 +3,14 @@
 use crate::errors::InternalError::{
     DeprecatedSDKVersion, InvalidSDKVersion, MissingRequiredHeader,
 };
-use crate::externals::{current_epoch_time, duration_since, get_reference_gas_price};
+use crate::externals::{
+    current_epoch_time, duration_since, get_reference_gas_price, safe_duration_since,
+};
 use crate::metrics::{call_with_duration, observation_callback, status_callback, Metrics};
 use crate::mvr::mvr_forward_resolution;
 use crate::signed_message::{signed_message, signed_request};
-use crate::types::MasterKeyPOP;
-use anyhow::Result;
+use crate::types::{MasterKeyPOP, Network};
+use anyhow::{Context, Result};
 use axum::extract::{Query, Request};
 use axum::http::{HeaderMap, HeaderValue};
 use axum::middleware::{from_fn_with_state, map_response, Next};
@@ -27,18 +29,21 @@ use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::VerifyingKey;
 use jsonrpsee::core::ClientError;
 use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
+use key_server_options::KeyServerOptions;
 use mysten_service::get_mysten_service;
-use mysten_service::metrics::start_basic_prometheus_server;
+use mysten_service::metrics::start_prometheus_server;
 use mysten_service::package_name;
 use mysten_service::package_version;
 use mysten_service::serve;
 use rand::thread_rng;
-use semver::{Version, VersionReq};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::env;
 use std::future::Future;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 use sui_sdk::error::{Error, SuiRpcResult};
@@ -52,7 +57,7 @@ use tap::tap::TapFallible;
 use tokio::sync::watch::{channel, Receiver};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, info, warn};
-use types::{ElGamalPublicKey, ElgamalEncryption, ElgamalVerificationKey, IbeMasterKey, Network};
+use types::{ElGamalPublicKey, ElgamalEncryption, ElgamalVerificationKey, IbeMasterKey};
 use valid_ptb::ValidPtb;
 
 mod cache;
@@ -62,32 +67,14 @@ mod signed_message;
 mod types;
 mod valid_ptb;
 
+mod key_server_options;
 mod metrics;
 mod mvr;
 #[cfg(test)]
 pub mod tests;
 
-/// The allowed staleness of the full node.
-/// When setting this duration, note a timestamp on Sui may be a bit late compared to
-/// the current time, but it shouldn't be more than a second.
-const ALLOWED_STALENESS: Duration = Duration::from_secs(120);
-
-/// The interval at which the latest checkpoint timestamp is updated.
-const CHECKPOINT_UPDATE_INTERVAL: Duration = Duration::from_secs(10);
-
-/// The interval at which the reference gas price is updated.
-const RGP_UPDATE_INTERVAL: Duration = Duration::from_secs(60);
-
-/// The maximum time to live for a session key.
-const SESSION_KEY_TTL_MAX: u16 = 30;
-
-/// The 1% of the max budget.
 const GAS_BUDGET: u64 = 500_000_000;
-
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// The minimum version of the SDK that is required to use this service.
-const SDK_VERSION_REQUIREMENT: &str = ">=0.4.5";
 
 // The "session" certificate, signed by the user
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -134,24 +121,16 @@ struct FetchKeyResponse {
 #[derive(Clone)]
 struct Server {
     sui_client: SuiClient,
-    network: Network,
     master_key: IbeMasterKey,
-    legacy_key_server_object_id: ObjectID,
-    key_server_object_id: ObjectID,
     legacy_key_server_object_id_sig: MasterKeyPOP,
     key_server_object_id_sig: MasterKeyPOP,
-    sdk_version_requirement: VersionReq,
+    options: KeyServerOptions,
 }
 
 impl Server {
-    async fn new(
-        master_key: IbeMasterKey,
-        network: Network,
-        legacy_key_server_object_id: ObjectID,
-        key_server_object_id: ObjectID,
-    ) -> Self {
+    async fn new(master_key: IbeMasterKey, options: KeyServerOptions) -> Self {
         let sui_client = SuiClientBuilder::default()
-            .build(&network.node_url())
+            .build(&options.network.node_url())
             .await
             .expect("SuiClientBuilder should not failed unless provided with invalid network url");
         info!(
@@ -159,27 +138,23 @@ impl Server {
             Base64::encode(
                 bcs::to_bytes(&ibe::public_key_from_master_key(&master_key)).expect("valid pk")
             ),
-            network
+            options.network
         );
 
-        let legacy_key_server_object_id_sig =
-            create_proof_of_possession(&master_key, &legacy_key_server_object_id.into_bytes());
-
         let key_server_object_id_sig =
-            create_proof_of_possession(&master_key, &key_server_object_id.into_bytes());
+            create_proof_of_possession(&master_key, &options.key_server_object_id.into_bytes());
 
-        let sdk_version_requirement =
-            VersionReq::parse(SDK_VERSION_REQUIREMENT).expect("valid SDK version requirement");
+        let legacy_key_server_object_id_sig = create_proof_of_possession(
+            &master_key,
+            &options.legacy_key_server_object_id.into_bytes(),
+        );
 
         Server {
             sui_client,
-            network,
             master_key,
-            legacy_key_server_object_id,
-            key_server_object_id,
             legacy_key_server_object_id_sig,
             key_server_object_id_sig,
-            sdk_version_requirement,
+            options,
         }
     }
 
@@ -195,7 +170,7 @@ impl Server {
         req_id: Option<&str>,
     ) -> Result<(), InternalError> {
         // Check certificate.
-        if cert.ttl_min > SESSION_KEY_TTL_MAX
+        if from_mins(cert.ttl_min) > self.options.session_key_ttl_max
             || cert.creation_time > current_epoch_time()
             || current_epoch_time() < 60_000 * (cert.ttl_min as u64) // checks for overflow
             || current_epoch_time() - 60_000 * (cert.ttl_min as u64) > cert.creation_time
@@ -322,14 +297,14 @@ impl Server {
         // Handle package upgrades: Use the first as the namespace
         let first_pkg_id =
             call_with_duration(metrics.map(|m| &m.fetch_pkg_ids_duration), || async {
-                externals::fetch_first_pkg_id(&valid_ptb.pkg_id(), &self.network).await
+                externals::fetch_first_pkg_id(&valid_ptb.pkg_id(), &self.options.network).await
             })
             .await?;
 
         // If an MVR name is provided, check that it points to the first package ID
         if let Some(mvr_name) = &mvr_name {
             let mvr_package_id =
-                mvr_forward_resolution(&self.sui_client, mvr_name, &self.network).await?;
+                mvr_forward_resolution(&self.sui_client, mvr_name, &self.options.network).await?;
             if mvr_package_id != first_pkg_id {
                 debug!(
                     "MVR name {} points to package ID {:?} while the first package ID is {:?} (req_id: {:?})",
@@ -447,11 +422,10 @@ impl Server {
     /// Returns the [Receiver].
     async fn spawn_latest_checkpoint_timestamp_updater(
         &self,
-        update_interval: Duration,
         metrics: Option<&Metrics>,
     ) -> Receiver<Timestamp> {
         self.spawn_periodic_updater(
-            update_interval,
+            self.options.checkpoint_update_interval,
             get_latest_checkpoint_timestamp,
             "latest checkpoint timestamp",
             metrics.map(|m| {
@@ -471,13 +445,9 @@ impl Server {
 
     /// Spawns a thread that fetches RGP and sends it to a [Receiver] once per `update_interval`.
     /// Returns the [Receiver].
-    async fn spawn_reference_gas_price_updater(
-        &self,
-        update_interval: Duration,
-        metrics: Option<&Metrics>,
-    ) -> Receiver<u64> {
+    async fn spawn_reference_gas_price_updater(&self, metrics: Option<&Metrics>) -> Receiver<u64> {
         self.spawn_periodic_updater(
-            update_interval,
+            self.options.rgp_update_interval,
             get_reference_gas_price,
             "RGP",
             None::<fn(u64)>,
@@ -494,7 +464,7 @@ async fn handle_fetch_key_internal(
     req_id: Option<&str>,
     sdk_version: &str,
 ) -> Result<Vec<KeyId>, InternalError> {
-    app_state.check_full_node_is_fresh(ALLOWED_STALENESS)?;
+    app_state.check_full_node_is_fresh()?;
 
     let valid_ptb = ValidPtb::try_from_base64(&payload.ptb)?;
 
@@ -565,14 +535,14 @@ async fn handle_get_service(
         Some(id) => {
             let object_id =
                 ObjectID::from_hex_literal(id).map_err(|_| InternalError::InvalidServiceId)?;
-            if object_id == app_state.server.key_server_object_id {
+            if object_id == app_state.server.options.key_server_object_id {
                 (
-                    app_state.server.key_server_object_id,
+                    app_state.server.options.key_server_object_id,
                     app_state.server.key_server_object_id_sig,
                 )
-            } else if object_id == app_state.server.legacy_key_server_object_id {
+            } else if object_id == app_state.server.options.legacy_key_server_object_id {
                 (
-                    app_state.server.legacy_key_server_object_id,
+                    app_state.server.options.legacy_key_server_object_id,
                     app_state.server.legacy_key_server_object_id_sig,
                 )
             } else {
@@ -580,7 +550,7 @@ async fn handle_get_service(
             }
         }
         None => (
-            app_state.server.legacy_key_server_object_id,
+            app_state.server.options.legacy_key_server_object_id,
             app_state.server.legacy_key_server_object_id_sig,
         ),
     };
@@ -601,12 +571,13 @@ struct MyState {
 }
 
 impl MyState {
-    fn check_full_node_is_fresh(&self, allowed_staleness: Duration) -> Result<(), InternalError> {
-        let staleness = duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
-        if staleness > allowed_staleness.as_millis() as i64 {
+    fn check_full_node_is_fresh(&self) -> Result<(), InternalError> {
+        // Compute the staleness of the latest checkpoint timestamp.
+        let staleness = safe_duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
+        if staleness > self.server.options.allowed_staleness {
             warn!(
                 "Full node is stale. Latest checkpoint is {} ms old.",
-                staleness
+                staleness.as_millis()
             );
             return Err(InternalError::Failure);
         }
@@ -619,7 +590,12 @@ impl MyState {
 
     fn validate_sdk_version(&self, version_string: &str) -> Result<(), InternalError> {
         let version = Version::parse(version_string).map_err(|_| InvalidSDKVersion)?;
-        if !self.server.sdk_version_requirement.matches(&version) {
+        if !self
+            .server
+            .options
+            .sdk_version_requirement
+            .matches(&version)
+        {
             return Err(DeprecatedSDKVersion);
         }
         Ok(())
@@ -674,41 +650,67 @@ async fn main() -> Result<()> {
     } else {
         Hex::decode(&master_key).expect("MASTER_KEY should be hex encoded")
     };
-    // TODO: remove this when the legacy key server is no longer needed
-    let legacy_object_id =
-        env::var("LEGACY_KEY_SERVER_OBJECT_ID").expect("LEGACY_KEY_SERVER_OBJECT_ID must be set");
-    let object_id = env::var("KEY_SERVER_OBJECT_ID").expect("KEY_SERVER_OBJECT_ID must be set");
-    let network = env::var("NETWORK")
-        .map(|n| Network::from_str(&n))
-        .unwrap_or(Network::Testnet);
+
+    // If CONFIG_PATH is set, read the configuration from the file.
+    // Otherwise, use the legacy environment variables.
+    let options: KeyServerOptions = match env::var("CONFIG_PATH") {
+        Ok(config_path) => {
+            info!("Loading config file: {}", config_path);
+            serde_yaml::from_reader(
+                std::fs::File::open(&config_path)
+                    .context(format!("Cannot open configuration file {config_path}"))?,
+            )
+            .expect("Failed to parse configuration file")
+        }
+        Err(_) => {
+            info!("Using legacy environment variables for configuration");
+            // TODO: remove this when the legacy key server is no longer needed
+            let legacy_object_id = env::var("LEGACY_KEY_SERVER_OBJECT_ID")
+                .expect("LEGACY_KEY_SERVER_OBJECT_ID must be set");
+            let object_id =
+                env::var("KEY_SERVER_OBJECT_ID").expect("KEY_SERVER_OBJECT_ID must be set");
+            let network = env::var("NETWORK")
+                .map(|n| Network::from_str(&n))
+                .unwrap_or(Network::Testnet);
+            KeyServerOptions::new_with_default_values(
+                network,
+                ObjectID::from_str(&legacy_object_id).expect("Invalid legacy object id"),
+                ObjectID::from_str(&object_id).expect("Invalid object id"),
+            )
+        }
+    };
 
     let _guard = mysten_service::logging::init();
     info!("Logging set up, setting up metrics");
 
     // initialize metrics
-    let registry = start_basic_prometheus_server();
+    let registry = start_prometheus_server(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+        options.metrics_host_port,
+    ))
+    .default_registry();
+
     // hook up custom application metrics
     let metrics = Arc::new(Metrics::new(&registry));
     info!("Metrics set up, starting service");
 
     info!("Starting server, version {}", PACKAGE_VERSION);
 
-    let s = Server::new(
-        IbeMasterKey::from_byte_array(&bytes.try_into().expect("Invalid MASTER_KEY length"))
-            .expect("Invalid MASTER_KEY value"),
-        network,
-        ObjectID::from_hex_literal(&legacy_object_id).expect("Invalid KEY_SERVER_OBJECT_ID"),
-        ObjectID::from_hex_literal(&object_id).expect("Invalid NEW_KEY_SERVER_OBJECT_ID"),
-    )
-    .await;
-    let server = Arc::new(s);
+    let server = Arc::new(
+        Server::new(
+            IbeMasterKey::from_byte_array(&bytes.try_into().expect("Invalid MASTER_KEY length"))
+                .expect("Invalid MASTER_KEY value"),
+            options,
+        )
+        .await,
+    );
 
     // Spawn tasks that update the state of the server.
     let latest_checkpoint_timestamp_receiver = server
-        .spawn_latest_checkpoint_timestamp_updater(CHECKPOINT_UPDATE_INTERVAL, Some(&metrics))
+        .spawn_latest_checkpoint_timestamp_updater(Some(&metrics))
         .await;
     let reference_gas_price = server
-        .spawn_reference_gas_price_updater(RGP_UPDATE_INTERVAL, Some(&metrics))
+        .spawn_reference_gas_price_updater(Some(&metrics))
         .await;
 
     let state = MyState {
@@ -736,4 +738,11 @@ async fn main() -> Result<()> {
         .layer(cors);
 
     serve(app).await
+}
+
+/// Creates a [Duration] from a given number of minutes.
+/// Can be removed once the `Duration::from_mins` method is stabilized.
+pub const fn from_mins(mins: u16) -> Duration {
+    // safe cast since 64 bits is more than enough to hold 2^16 * 60 seconds
+    Duration::from_secs((mins * 60) as u64)
 }
