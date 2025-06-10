@@ -30,6 +30,7 @@ use fastcrypto::traits::VerifyingKey;
 use jsonrpsee::core::ClientError;
 use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
 use key_server_options::KeyServerOptions;
+use metrics::metrics_middleware;
 use mysten_service::get_mysten_service;
 use mysten_service::metrics::start_prometheus_server;
 use mysten_service::package_name;
@@ -814,6 +815,12 @@ async fn main() -> Result<()> {
                 .route("/v1/service", get(handle_get_service))
                 .layer(from_fn_with_state(state.clone(), handle_request_headers))
                 .layer(map_response(add_response_headers))
+                // Outside most middlewares that tracks metrics for HTTP requests and response
+                // status.
+                .layer(from_fn_with_state(
+                    state.metrics.clone(),
+                    metrics_middleware,
+                ))
                 .with_state(state),
         )
         .layer(cors);
