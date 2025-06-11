@@ -15,11 +15,25 @@ use tracing::debug;
 ///
 pub struct ValidPtb(ProgrammableTransaction);
 
+// Should only increase this with time.
+const MAX_COMMANDS: usize = 100;
+
 impl TryFrom<ProgrammableTransaction> for ValidPtb {
     type Error = InternalError;
 
     fn try_from(ptb: ProgrammableTransaction) -> Result<Self, Self::Error> {
         debug!("Creating vptb from: {:?}", ptb);
+
+        if ptb.commands.len() > MAX_COMMANDS {
+            return_err!(
+                InternalError::InvalidPTB(format!(
+                    "Too many commands in PTB (more than {})",
+                    MAX_COMMANDS
+                )),
+                "Too many commands in PTB: {:?}",
+                ptb
+            );
+        }
 
         // Restriction: The PTB must have at least one input and one command.
         if ptb.inputs.is_empty() || ptb.commands.is_empty() {
