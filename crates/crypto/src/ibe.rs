@@ -4,15 +4,18 @@
 //! Implementation of a the Boneh-Franklin Identity-based encryption scheme from https://eprint.iacr.org/2001/090 over the BLS12-381 curve construction.
 //! It enables a symmetric key to be derived from the identity + the public key of a user and used to encrypt a fixed size message of length [KEY_LENGTH].
 
-use crate::utils::xor;
+use crate::utils::{generate_random_bytes, xor};
 use crate::{DST_ID, DST_KDF, DST_POP, KEY_SIZE};
 use fastcrypto::error::FastCryptoError::{GeneralError, InvalidInput};
 use fastcrypto::error::FastCryptoResult;
 use fastcrypto::groups::bls12381::{G1Element, G2Element, GTElement, Scalar};
-use fastcrypto::groups::{GroupElement, HashToGroupElement, Pairing, Scalar as GenericScalar};
+use fastcrypto::groups::{
+    bls12381, GroupElement, HashToGroupElement, Pairing, Scalar as GenericScalar,
+};
 use fastcrypto::hash::{HashFunction, Sha3_256};
+use fastcrypto::hmac::{hkdf_sha3_256, HkdfIkm};
 use fastcrypto::serde_helpers::ToFromByteArray;
-use fastcrypto::traits::AllowedRng;
+use fastcrypto::traits::{AllowedRng, ToFromBytes};
 use sui_types::base_types::ObjectID;
 
 pub type MasterKey = Scalar;
@@ -27,15 +30,38 @@ pub type EncryptedRandomness = [u8; KEY_SIZE];
 // Additional info for the key derivation. Contains the object id for the key server and the share index.
 pub type Info = (ObjectID, u8);
 
+pub const SEED_LENGTH: usize = 32;
+
 /// Generate a key pair consisting of a master key and a public key.
 pub fn generate_key_pair<R: AllowedRng>(rng: &mut R) -> (MasterKey, PublicKey) {
-    let sk = Scalar::rand(rng);
-    (sk, public_key_from_master_key(&sk))
+    into_key_pair(MasterKey::rand(rng))
 }
 
 /// Derive a public key from a master key.
 pub fn public_key_from_master_key(master_key: &MasterKey) -> PublicKey {
     G2Element::generator() * master_key
+}
+
+/// Create a key pair from a master key. See also [public_key_from_master_key].
+pub fn into_key_pair(master_key: MasterKey) -> (MasterKey, PublicKey) {
+    (master_key, public_key_from_master_key(&master_key))
+}
+
+/// Generate a fresh seed of length [SEED_LENGTH] using the provided random number generator.
+pub fn generate_seed<R: AllowedRng>(rng: &mut R) -> [u8; SEED_LENGTH] {
+    generate_random_bytes(rng)
+}
+
+/// Derive a key pair from a seed (master key) and a derivation index.
+pub fn derive_key_pair(seed: &[u8], derivation_index: u64) -> (MasterKey, PublicKey) {
+    let hkdf_ikm = HkdfIkm::from_bytes(seed).expect("no length requirement");
+
+    // Derive 64 bytes to reduce the bias of rounding
+    let random_bytes =
+        hkdf_sha3_256(&hkdf_ikm, &[], &derivation_index.to_be_bytes(), 64).expect("valid length");
+
+    let master_key = bls12381::buffer_to_scalar_mod_r(&random_bytes).expect("valid length");
+    into_key_pair(master_key)
 }
 
 /// Extract a user secret key from a master key and an id.
@@ -196,5 +222,22 @@ mod tests {
             hex::decode("89befdfd6aecdce1305ddbca891d1c29f0507cfd5225cd6b11e52e60f088ea87")
                 .unwrap();
         assert_eq!(expected, derived_key);
+    }
+
+    #[test]
+    fn test_derive_key_regression() {
+        let seed = [1u8; 32];
+        let derivation_index = 42;
+        let expected_master_key = MasterKey::from_byte_array(
+            &hex::decode("17d496df95e12b5caec0c4a15b09a5ea41b4fb1cf3ba28f1c6c72556846a6db6")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            expected_master_key,
+            derive_key_pair(&seed, derivation_index).0
+        );
     }
 }

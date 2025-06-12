@@ -3,6 +3,7 @@
 
 use clap::{Parser, Subcommand};
 use crypto::dem::{Aes256Gcm, Hmac256Ctr};
+use crypto::ibe::{generate_seed, SEED_LENGTH};
 use crypto::EncryptionInput::Plain;
 use crypto::{
     create_full_id, ibe, seal_decrypt, seal_encrypt, Ciphertext, EncryptedObject, EncryptionInput,
@@ -35,6 +36,17 @@ struct Arguments {
 enum Command {
     /// Generate a new master key and public key.
     Genkey,
+    /// Generate a fresh seed for deriving keys. See [`Command::DeriveKey`].
+    GenSeed,
+    /// Derive a key pair from a seed and an index for use with permissioned servers.
+    DeriveKey {
+        /// Seed for the key pair. Must be 32 bytes.
+        #[arg(long)]
+        seed: EncodedByteArray<SEED_LENGTH>,
+        /// Index for the key pair. This is used to derive a different key pair from the same seed.
+        #[arg(long)]
+        index: u64,
+    },
     /// Extract a user secret key from an id and a master key.
     Extract {
         /// The Sui address of the Move package that handles the KMS for this key
@@ -43,7 +55,7 @@ enum Command {
         /// The ID of the key that should be derived.
         #[arg(long)]
         id: EncodedBytes,
-        /// Master key. Base64 encoding of a BLS12-381 scalar.
+        /// Master key. Hex encoding of a BLS12-381 scalar.
         #[arg(long, value_parser = parse_serializable::<Scalar, DefaultEncoding>)]
         master_key: Scalar,
     },
@@ -55,10 +67,10 @@ enum Command {
         /// The ID of the key that should be derived.
         #[arg(long)]
         id: EncodedBytes,
-        /// User secret key. Base64 encoding of a compressed BLS12-381 G1Element.
+        /// User secret key. Hex encoding of a compressed BLS12-381 G1Element.
         #[arg(long, value_parser = parse_serializable::<G1Element, DefaultEncoding>)]
         user_secret_key: G1Element,
-        /// Public key. Base64 encoding of a compressed BLS12-381 G2Element.
+        /// Public key. Hex encoding of a compressed BLS12-381 G2Element.
         #[arg(long, value_parser = parse_serializable::<G2Element, DefaultEncoding>)]
         public_key: G2Element,
     },
@@ -161,11 +173,12 @@ enum Command {
         encrypted_object: EncryptedObject,
         /// The derived symmetric key from the encryption.
         #[arg(long)]
-        key: EncodedBytes,
+        key: EncodedByteArray<KEY_LENGTH>,
     },
 }
 
 struct GenkeyOutput((Scalar, G2Element));
+struct GenSeedOutput([u8; SEED_LENGTH]);
 struct ExtractOutput(G1Element);
 struct VerifyOutput(FastCryptoResult<()>);
 struct EncryptionOutput((EncryptedObject, [u8; KEY_LENGTH]));
@@ -178,6 +191,16 @@ fn main() -> FastCryptoResult<()> {
 
     let output = match args.command {
         Command::Genkey => GenkeyOutput(ibe::generate_key_pair(&mut thread_rng())).to_string(),
+        Command::GenSeed => GenSeedOutput(generate_seed(&mut thread_rng())).to_string(),
+        Command::DeriveKey {
+            seed,
+            index: derivation_index,
+        } => {
+            if seed.0.len() != SEED_LENGTH {
+                return Err(FastCryptoError::InputLengthWrong(SEED_LENGTH));
+            }
+            GenkeyOutput(ibe::derive_key_pair(&seed.0, derivation_index)).to_string()
+        }
         Command::Extract {
             package_id,
             id,
@@ -269,25 +292,17 @@ fn main() -> FastCryptoResult<()> {
         Command::SymmetricDecrypt {
             encrypted_object,
             key,
-        } => {
-            let dem_key = key
-                .0
-                .try_into()
-                .map_err(|_| FastCryptoError::InvalidInput)?;
-            let EncryptedObject { ciphertext, .. } = encrypted_object;
-
-            match ciphertext {
-                Ciphertext::Aes256Gcm { blob, aad } => {
-                    Aes256Gcm::decrypt(&blob, &aad.unwrap_or(vec![]), &dem_key)
-                }
-                Ciphertext::Hmac256Ctr { blob, aad, mac } => {
-                    Hmac256Ctr::decrypt(&blob, &mac, &aad.unwrap_or(vec![]), &dem_key)
-                }
-                _ => Err(FastCryptoError::InvalidInput),
+        } => match encrypted_object.ciphertext {
+            Ciphertext::Aes256Gcm { blob, aad } => {
+                Aes256Gcm::decrypt(&blob, &aad.unwrap_or(vec![]), &key.0)
             }
-            .map(SymmetricDecryptOutput)?
-            .to_string()
+            Ciphertext::Hmac256Ctr { blob, aad, mac } => {
+                Hmac256Ctr::decrypt(&blob, &mac, &aad.unwrap_or(vec![]), &key.0)
+            }
+            _ => Err(FastCryptoError::InvalidInput),
         }
+        .map(SymmetricDecryptOutput)?
+        .to_string(),
     };
     println!("{}", output);
     Ok(())
@@ -302,6 +317,24 @@ impl FromStr for EncodedBytes {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         DefaultEncoding::decode(s).map(EncodedBytes)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct EncodedByteArray<const N: usize>([u8; N]);
+
+impl<const N: usize> FromStr for EncodedByteArray<N> {
+    type Err = FastCryptoError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        DefaultEncoding::decode(s)
+            .map_err(|_| FastCryptoError::InvalidInput)
+            .and_then(|bytes| {
+                bytes
+                    .try_into()
+                    .map_err(|_| FastCryptoError::InputLengthWrong(N))
+            })
+            .map(EncodedByteArray)
     }
 }
 
@@ -325,6 +358,12 @@ impl Display for GenkeyOutput {
             serializable_to_string(&self.0 .0),
             serializable_to_string(&self.0 .1),
         )
+    }
+}
+
+impl Display for GenSeedOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Seed: {}", DefaultEncoding::encode(self.0))
     }
 }
 
@@ -354,7 +393,7 @@ impl Display for EncryptionOutput {
             f,
             "Encrypted object (bcs): {}\nSymmetric key: {}",
             DefaultEncoding::encode(bcs::to_bytes(&self.0 .0).unwrap()),
-            Hex::encode(self.0 .1)
+            DefaultEncoding::encode(self.0 .1)
         )
     }
 }
