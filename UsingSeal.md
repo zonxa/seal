@@ -226,13 +226,6 @@ In the config file, make sure to:
 - Set the mode to `Open`.
 - Set the `key_server_object_id` field to the ID of the key server object you registered on-chain.
 
-For example:
-```shell
-export MASTER_KEY="0x652081a0ad50cd516e8cb82e44653793a27853350d35d724fded523e85ed0382"
-export CONFIG_PATH="/Users/alice/seal/key-server-config.yaml"
-cargo run --bin key-server
-```
-
 // TODO: update the docker
 
 Alternatively, Docker can be used to run the key server. For example:
@@ -312,16 +305,16 @@ The new owner should also update the key server’s URL to reflect the new endpo
 
 The key server is a lightweight, stateless service that does not require persistent storage. Its stateless design supports horizontal scalability. The service must have access to a trusted full node, ideally one located nearby to reduce latency.
 
-The key server is initialized with an IBE master key, which must be securely stored and accessible only to the service, for example, using a cloud-based key management system (KMS), or a self-managed software or hardware vault.
+The key server is initialized with a short key, which must be securely stored and accessible only to the service, for example, using a cloud-based key management system (KMS), or a self-managed software or hardware vault.
+Imported keys should also be securely stored in a similar manner.
 
 To protect the service against denial-of-service (DoS) attacks, implement standard mitigations such as rate limiting at the API gateway layer.
 
 
-Key servers expose a set of metrics via a Prometheus server running on port 9184. They can be viewed in raw form by calling `curl http://0.0.0.0:9184`
-or used in a data visualization and analytics tool like Grafana.
+The key server exposes a set of metrics via a Prometheus server running on port 9184.
+They can be viewed in raw form by calling `curl http://0.0.0.0:9184` or used in a data visualization and analytics tool like Grafana.
 
-Similarly, a health check endpoint can be used by calling
-`curl http://0.0.0.0:2024/health`.
+Similarly, the key server exposes a health check endpoint that can be called using `curl http://0.0.0.0:2024/health`.
 
 ## The CLI
 
