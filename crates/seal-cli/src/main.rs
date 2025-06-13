@@ -4,13 +4,13 @@
 use clap::{Parser, Subcommand};
 use crypto::dem::{Aes256Gcm, Hmac256Ctr};
 use crypto::ibe::{generate_seed, SEED_LENGTH};
+use crypto::prefixed_hex::PrefixedHex;
 use crypto::EncryptionInput::Plain;
 use crypto::{
     create_full_id, ibe, seal_decrypt, seal_encrypt, Ciphertext, EncryptedObject, EncryptionInput,
     IBEEncryptions, IBEPublicKeys, IBEUserSecretKeys, ObjectID,
 };
 use fastcrypto::encoding::Encoding;
-use fastcrypto::encoding::Hex;
 use fastcrypto::error::{FastCryptoError, FastCryptoResult};
 use fastcrypto::groups::bls12381::{G1Element, G2Element, Scalar};
 use rand::thread_rng;
@@ -22,7 +22,7 @@ use std::str::FromStr;
 const KEY_LENGTH: usize = 32;
 
 /// Default encoding for serializing and deserializing values.
-type DefaultEncoding = Hex;
+type DefaultEncoding = PrefixedHex;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
