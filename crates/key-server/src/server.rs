@@ -311,18 +311,15 @@ impl Server {
         // Make sure that the package is supported.
         self.master_keys.has_key_for_package(&first_pkg_id)?;
 
-        // If an MVR name is provided, check that it points to the first package ID
-        if let Some(mvr_name) = &mvr_name {
-            let mvr_package_id =
-                mvr_forward_resolution(&self.sui_client, mvr_name, &self.options.network).await?;
-            if mvr_package_id != first_pkg_id {
-                debug!(
-                    "MVR name {} points to package ID {:?} while the first package ID is {:?} (req_id: {:?})",
-                    mvr_name, mvr_package_id, first_pkg_id, req_id
-                );
-                return Err(InternalError::InvalidMVRName);
-            }
-        }
+        // Check if the package id that MVR name points matches the first package ID, if provided.
+        externals::check_mvr_package_id(
+            &mvr_name,
+            &self.sui_client,
+            &self.options.network,
+            first_pkg_id,
+            req_id,
+        )
+        .await?;
 
         // Check all conditions
         self.check_signature(
