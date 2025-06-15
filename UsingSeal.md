@@ -229,7 +229,7 @@ CONFIG_PATH=crates/key-server/key-server-config.yaml MASTER_KEY=$MASTER_KEY carg
 
 In the config file, make sure to:
 - Set the mode to `Open`.
-- Set the `key_server_object_id` field to the ID of the key server object you registered on-chain.
+- Set the `key_server_object_id` field to the ID of the key server object you registered on-chain $KEY_SERVER_OBJECT_ID.
 
 Alternatively, Docker can be used to run the key server. For example:
 
@@ -362,6 +362,17 @@ For example:
 ```
 CONFIG_PATH=crates/key-server/key-server-config.yaml BOB_BLS_KEY=$CLIENT_MASTER_KEY MASTER_SEED=$MASTER_SEED cargo run --bin key-server
 ```
+
+With docker: 
+```
+docker run -p 2024:2024 \
+  -v $(pwd)/crates/key-server/key-server-config.yaml:/config/key-server-config.yaml \
+  -e CONFIG_PATH=/config/key-server-config.yaml \
+  -e BOB_BLS_KEY=$CLIENT_MASTER_KEY \
+  -e MASTER_SEED=$MASTER_SEED \
+  seal-key-server
+```
+
 **Note:** After importing, the registered key server object must be transferred onchain to the new key server’s owner.
 The new owner should also update the key server’s URL to reflect the new endpoint.
 
