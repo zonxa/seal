@@ -20,13 +20,6 @@ RUN apt-get update && apt-get install -y cmake clang libpq5 ca-certificates libp
 
 COPY --from=builder /work/target/release/key-server /opt/key-server/bin/
 
-# Handle config file
-ARG CONFIG_CONTENT
-RUN if [ -n "$CONFIG_CONTENT" ]; then \
-        mkdir -p /opt/key-server/resources && \
-        echo "$CONFIG_CONTENT" | base64 -d > /opt/key-server/resources/config.yaml; \
-    fi
-
 # Handle all environment variables
 RUN echo '#!/bin/bash\n\
 # Export all environment variables\n\
