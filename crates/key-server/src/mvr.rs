@@ -91,6 +91,7 @@ pub(crate) async fn mvr_forward_resolution(
                         .await
                         .map_err(|_| Failure)?,
                     key_server_options.rpc_config.retry_config.clone(),
+                    sui_rpc_client.get_metrics(),
                 ),
             )
             .await?
@@ -194,6 +195,7 @@ mod tests {
             &SuiRpcClient::new(
                 SuiClientBuilder::default().build_mainnet().await.unwrap(),
                 RetryConfig::default(),
+                None,
             ),
             &KeyServerOptions::new_for_testing(Network::Mainnet),
             ObjectID::from_str(
@@ -219,7 +221,8 @@ mod tests {
             mvr_forward_resolution(
                 &SuiRpcClient::new(
                     SuiClientBuilder::default().build_testnet().await.unwrap(),
-                    RetryConfig::default()
+                    RetryConfig::default(),
+                    None,
                 ),
                 "@mysten/kiosk",
                 &KeyServerOptions::new_for_testing(Network::Testnet),
@@ -238,6 +241,7 @@ mod tests {
                 &SuiRpcClient::new(
                     SuiClientBuilder::default().build_mainnet().await.unwrap(),
                     RetryConfig::default(),
+                    None,
                 ),
                 "@pkg/seal-demo-1234",
                 &KeyServerOptions::new_for_testing(Network::Mainnet),
@@ -254,6 +258,7 @@ mod tests {
                 &SuiRpcClient::new(
                     SuiClientBuilder::default().build_testnet().await.unwrap(),
                     RetryConfig::default(),
+                    None,
                 ),
                 "@pkg/seal-demo-1234",
                 &KeyServerOptions::new_for_testing(Network::Testnet),
@@ -274,6 +279,7 @@ mod tests {
                 &SuiRpcClient::new(
                     SuiClientBuilder::default().build_mainnet().await.unwrap(),
                     RetryConfig::default(),
+                    None,
                 ),
                 "@saemundur/seal",
                 &KeyServerOptions::new_for_testing(Network::Mainnet),
@@ -289,6 +295,7 @@ mod tests {
                 &SuiRpcClient::new(
                     SuiClientBuilder::default().build_mainnet().await.unwrap(),
                     RetryConfig::default(),
+                    None,
                 ),
                 "invalid_name",
                 &KeyServerOptions::new_for_testing(Network::Mainnet),

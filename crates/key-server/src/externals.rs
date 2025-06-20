@@ -183,6 +183,7 @@ mod tests {
                     "SuiClientBuilder should not failed unless provided with invalid network url",
                 ),
             RetryConfig::default(),
+            None,
         );
         match fetch_first_pkg_id(&address, &sui_rpc_client).await {
             Ok(first) => {
@@ -208,6 +209,7 @@ mod tests {
                     "SuiClientBuilder should not failed unless provided with invalid network url",
                 ),
             RetryConfig::default(),
+            None,
         );
         let result = fetch_first_pkg_id(&invalid_address, &sui_rpc_client).await;
         assert!(matches!(result, Err(InternalError::InvalidPackage)));

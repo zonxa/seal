@@ -21,6 +21,7 @@ async fn test_get_latest_checkpoint_timestamp() {
     let timestamp = get_latest_checkpoint_timestamp(SuiRpcClient::new(
         tc.cluster.sui_client().clone(),
         RetryConfig::default(),
+        None,
     ))
     .await
     .unwrap();

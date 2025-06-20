@@ -115,6 +115,7 @@ impl SealTestCluster {
                     sui_rpc_client: SuiRpcClient::new(
                         self.cluster.sui_client().clone(),
                         RetryConfig::default(),
+                        None,
                     ),
                     master_keys: MasterKeys::Open { master_key },
                     key_server_oid_to_pop: HashMap::new(),
