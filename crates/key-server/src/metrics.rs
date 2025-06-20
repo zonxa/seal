@@ -1,10 +1,14 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use axum::{extract::State, middleware};
 use prometheus::{
-    register_histogram_with_registry, register_int_counter_vec_with_registry,
-    register_int_counter_with_registry, Histogram, IntCounter, IntCounterVec, Registry,
+    register_histogram_vec_with_registry, register_histogram_with_registry,
+    register_int_counter_vec_with_registry, register_int_counter_with_registry,
+    register_int_gauge_vec_with_registry, Histogram, HistogramVec, IntCounter, IntCounterVec,
+    IntGaugeVec, Registry,
 };
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug)]
@@ -38,6 +42,18 @@ pub(crate) struct Metrics {
 
     /// Total number of requests per number of ids
     pub requests_per_number_of_ids: Histogram,
+
+    /// HTTP request latency by route and status code
+    pub http_request_duration_millis: HistogramVec,
+
+    /// HTTP request count by route and status code
+    pub http_requests_total: IntCounterVec,
+
+    /// HTTP request in flight by route
+    pub http_request_in_flight: IntGaugeVec,
+
+    /// Sui RPC request duration by label
+    pub sui_rpc_request_duration_millis: HistogramVec,
 }
 
 impl Metrics {
@@ -111,6 +127,36 @@ impl Metrics {
                 registry
             )
             .unwrap(),
+            http_request_duration_millis: register_histogram_vec_with_registry!(
+                "http_request_duration_millis",
+                "HTTP request duration in milliseconds",
+                &["route", "status"],
+                default_fast_call_duration_buckets(),
+                registry
+            )
+            .unwrap(),
+            http_requests_total: register_int_counter_vec_with_registry!(
+                "http_requests_total",
+                "Total number of HTTP requests",
+                &["route", "status"],
+                registry
+            )
+            .unwrap(),
+            http_request_in_flight: register_int_gauge_vec_with_registry!(
+                "http_request_in_flight",
+                "Number of HTTP requests in flight",
+                &["route"],
+                registry
+            )
+            .unwrap(),
+            sui_rpc_request_duration_millis: register_histogram_vec_with_registry!(
+                "sui_rpc_request_duration_millis",
+                "Sui RPC request duration and status in milliseconds",
+                &["method", "status"],
+                default_fast_call_duration_buckets(),
+                registry
+            )
+            .unwrap(),
         }
     }
 
@@ -133,14 +179,17 @@ pub(crate) fn call_with_duration<T>(metrics: Option<&Histogram>, closure: impl F
 }
 
 /// Create a callback function which when called will add the input transformed by f to the histogram.
-pub(crate) fn observation_callback<T>(histogram: &Histogram, f: impl Fn(T) -> f64) -> impl Fn(T) {
+pub(crate) fn observation_callback<T, U: Fn(T) -> f64>(
+    histogram: &Histogram,
+    f: U,
+) -> impl Fn(T) + use<T, U> {
     let histogram = histogram.clone();
     move |t| {
         histogram.observe(f(t));
     }
 }
 
-pub(crate) fn status_callback(metrics: &IntCounterVec) -> impl Fn(bool) {
+pub(crate) fn status_callback(metrics: &IntCounterVec) -> impl Fn(bool) + use<> {
     let metrics = metrics.clone();
     move |status: bool| {
         let value = match status {
@@ -168,4 +217,40 @@ fn default_external_call_duration_buckets() -> Vec<f64> {
 
 fn default_fast_call_duration_buckets() -> Vec<f64> {
     buckets(10.0, 100.0, 10.0)
+}
+
+/// Middleware that tracks metrics for HTTP requests and response status.
+pub(crate) async fn metrics_middleware(
+    State(metrics): State<Arc<Metrics>>,
+    request: axum::extract::Request,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let route = request.uri().path().to_string();
+    let start = std::time::Instant::now();
+
+    metrics
+        .http_request_in_flight
+        .with_label_values(&[&route])
+        .inc();
+
+    let response = next.run(request).await;
+
+    metrics
+        .http_request_in_flight
+        .with_label_values(&[&route])
+        .dec();
+
+    let duration = start.elapsed().as_millis() as f64;
+    let status = response.status().as_str().to_string();
+
+    metrics
+        .http_request_duration_millis
+        .with_label_values(&[&route, &status])
+        .observe(duration);
+    metrics
+        .http_requests_total
+        .with_label_values(&[&route, &status])
+        .inc();
+
+    response
 }

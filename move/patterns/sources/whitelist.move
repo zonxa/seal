@@ -14,6 +14,8 @@
 ///   After a fixed TTL anyone can access the key, regardless of being on the whitelist.
 ///   Temporary privacy can be useful for compliance reasons, e.g., GDPR.
 ///
+/// This pattern implements versioning per whitelist.
+///
 module patterns::whitelist;
 
 use sui::table;
@@ -22,13 +24,17 @@ const ENoAccess: u64 = 1;
 const EInvalidCap: u64 = 2;
 const EDuplicate: u64 = 3;
 const ENotInWhitelist: u64 = 4;
+const EWrongVersion: u64 = 5;
+
+const VERSION: u64 = 1;
 
 public struct Whitelist has key {
     id: UID,
+    version: u64,
     addresses: table::Table<address, bool>,
 }
 
-public struct Cap has key {
+public struct Cap has key, store {
     id: UID,
     wl_id: ID,
 }
@@ -42,6 +48,7 @@ public struct Cap has key {
 public fun create_whitelist(ctx: &mut TxContext): (Cap, Whitelist) {
     let wl = Whitelist {
         id: object::new(ctx),
+        version: VERSION,
         addresses: table::new(ctx),
     };
     let cap = Cap {
@@ -51,11 +58,15 @@ public fun create_whitelist(ctx: &mut TxContext): (Cap, Whitelist) {
     (cap, wl)
 }
 
+public fun share_whitelist(wl: Whitelist) {
+    transfer::share_object(wl);
+}
+
 // Helper function for creating a whitelist and send it back to sender.
 entry fun create_whitelist_entry(ctx: &mut TxContext) {
     let (cap, wl) = create_whitelist(ctx);
-    transfer::share_object(wl);
-    transfer::transfer(cap, ctx.sender());
+    share_whitelist(wl);
+    transfer::public_transfer(cap, ctx.sender());
 }
 
 public fun add(wl: &mut Whitelist, cap: &Cap, account: address) {
@@ -70,6 +81,9 @@ public fun remove(wl: &mut Whitelist, cap: &Cap, account: address) {
     wl.addresses.remove(account);
 }
 
+// Cap can also be used to upgrade the version of Whitelist in future versions,
+// see https://docs.sui.io/concepts/sui-move-concepts/packages/upgrade#versioned-shared-objects
+
 //////////////////////////////////////////////////////////
 /// Access control
 /// key format: [pkg id][whitelist id][random nonce]
@@ -77,6 +91,9 @@ public fun remove(wl: &mut Whitelist, cap: &Cap, account: address) {
 
 /// All whitelisted addresses can access all IDs with the prefix of the whitelist
 fun check_policy(caller: address, id: vector<u8>, wl: &Whitelist): bool {
+    // Check we are using the right version of the package.
+    assert!(wl.version == VERSION, EWrongVersion);
+
     // Check if the id has the right prefix
     let prefix = wl.id.to_bytes();
     let mut i = 0;
@@ -100,7 +117,7 @@ entry fun seal_approve(id: vector<u8>, wl: &Whitelist, ctx: &TxContext) {
 
 #[test_only]
 public fun destroy_for_testing(wl: Whitelist, cap: Cap) {
-    let Whitelist { id, addresses } = wl;
+    let Whitelist { id, version: _, addresses } = wl;
     addresses.drop();
     object::delete(id);
     let Cap { id, .. } = cap;

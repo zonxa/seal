@@ -11,7 +11,6 @@ pub enum InternalError {
     InvalidPTB(String),
     InvalidPackage,
     NoAccess,
-    OldPackageVersion,
     InvalidSignature,
     InvalidSessionSignature,
     InvalidCertificate,
@@ -19,6 +18,9 @@ pub enum InternalError {
     DeprecatedSDKVersion,
     MissingRequiredHeader(String),
     InvalidParameter,
+    InvalidMVRName,
+    InvalidServiceId,
+    UnsupportedPackageId,
     Failure, // Internal error, try again later
 }
 
@@ -42,10 +44,6 @@ impl IntoResponse for InternalError {
                 StatusCode::FORBIDDEN,
                 "Invalid certificate time or ttl".to_string(),
             ),
-            InternalError::OldPackageVersion => (
-                StatusCode::FORBIDDEN,
-                "Package has been upgraded, please use the latest version".to_string(),
-            ),
             InternalError::InvalidSignature => {
                 (StatusCode::FORBIDDEN, "Invalid user signature".to_string())
             }
@@ -67,6 +65,16 @@ impl IntoResponse for InternalError {
             InternalError::InvalidParameter => (
                 StatusCode::FORBIDDEN,
                 "Invalid parameter. If the object was just created, try again later.".to_string(),
+            ),
+            InternalError::InvalidMVRName => {
+                (StatusCode::FORBIDDEN, "Invalid MVR name".to_string())
+            }
+            InternalError::InvalidServiceId => {
+                (StatusCode::BAD_REQUEST, "Invalid service ID".to_string())
+            }
+            InternalError::UnsupportedPackageId => (
+                StatusCode::BAD_REQUEST,
+                "Unsupported package ID".to_string(),
             ),
             InternalError::Failure => (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -90,13 +98,15 @@ impl InternalError {
             InternalError::InvalidPackage => "InvalidPackage",
             InternalError::NoAccess => "NoAccess",
             InternalError::InvalidCertificate => "InvalidCertificate",
-            InternalError::OldPackageVersion => "OldPackageVersion",
             InternalError::InvalidSignature => "InvalidSignature",
             InternalError::InvalidSessionSignature => "InvalidSessionSignature",
             InternalError::InvalidSDKVersion => "InvalidSDKVersion",
             InternalError::DeprecatedSDKVersion => "DeprecatedSDKVersion",
             InternalError::MissingRequiredHeader(_) => "MissingRequiredHeader",
             InternalError::InvalidParameter => "InvalidParameter",
+            InternalError::InvalidMVRName => "InvalidMVRName",
+            InternalError::InvalidServiceId => "InvalidServiceId",
+            InternalError::UnsupportedPackageId => "UnsupportedPackageId",
             InternalError::Failure => "Failure",
         }
     }

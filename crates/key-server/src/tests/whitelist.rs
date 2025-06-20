@@ -4,6 +4,7 @@
 use super::externals::get_key;
 use crate::tests::SealTestCluster;
 use serde_json::json;
+use std::path::PathBuf;
 use sui_sdk::{json::SuiJsonValue, rpc_types::ObjectChange};
 use sui_types::{
     base_types::{ObjectID, SuiAddress},
@@ -17,17 +18,17 @@ use tracing_test::traced_test;
 #[traced_test]
 #[tokio::test]
 async fn test_whitelist() {
-    let mut tc = SealTestCluster::new(1, 2).await;
+    let mut tc = SealTestCluster::new(2).await;
+    tc.add_open_server().await;
+    tc.add_open_server().await;
 
     let (package_id, _) = tc.publish("patterns").await;
 
-    let (whitelist, cap) = create_whitelist(tc.get_mut(), package_id).await;
+    let (whitelist, cap, initial_shared_version) =
+        create_whitelist(tc.test_cluster(), package_id).await;
 
     let user_address = tc.users[0].address;
-    add_user_to_whitelist(tc.get_mut(), package_id, whitelist, cap, user_address).await;
-
-    // We know the version at this point
-    let initial_shared_version = 3;
+    add_user_to_whitelist(tc.test_cluster(), package_id, whitelist, cap, user_address).await;
 
     let ptb = whitelist_create_ptb(package_id, whitelist, initial_shared_version);
     assert!(
@@ -48,17 +49,24 @@ async fn test_whitelist() {
 #[traced_test]
 #[tokio::test]
 async fn test_whitelist_with_upgrade() {
-    let mut tc = SealTestCluster::new(1, 1).await;
+    let mut tc = SealTestCluster::new(1).await;
+    tc.add_open_server().await;
 
-    let (package_id_1, upgrade_cap) = tc.publish("patterns").await;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests/whitelist_v1");
+    let (package_id_1, upgrade_cap) = tc.publish_path(path).await;
     println!("Old pkg: {}", package_id_1);
 
-    let (whitelist, cap) = create_whitelist(tc.get_mut(), package_id_1).await;
+    let (whitelist, cap, initial_shared_version) =
+        create_whitelist(tc.test_cluster(), package_id_1).await;
     let user_address = tc.users[0].address;
-    add_user_to_whitelist(tc.get_mut(), package_id_1, whitelist, cap, user_address).await;
-
-    // We know the version at this point
-    let initial_shared_version = 3;
+    add_user_to_whitelist(
+        tc.test_cluster(),
+        package_id_1,
+        whitelist,
+        cap,
+        user_address,
+    )
+    .await;
 
     // Succeeds with initial version
     let ptb = whitelist_create_ptb(package_id_1, whitelist, initial_shared_version);
@@ -71,9 +79,35 @@ async fn test_whitelist_with_upgrade() {
     .await
     .is_ok());
 
-    let package_id_2 = tc.upgrade(package_id_1, upgrade_cap, "patterns").await;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests/whitelist_v2");
+    let package_id_2 = tc.upgrade(package_id_1, upgrade_cap, path).await;
 
-    // Succeeds with new package id
+    // Succeeds with old package id (since we didn't upgrade)
+    let ptb = whitelist_create_ptb(package_id_1, whitelist, initial_shared_version);
+    assert!(get_key(
+        tc.server(),
+        &package_id_1,
+        ptb.clone(),
+        &tc.users[0].keypair
+    )
+    .await
+    .is_ok());
+
+    // But fails with new version
+    let ptb = whitelist_create_ptb(package_id_2, whitelist, initial_shared_version);
+    assert!(get_key(
+        tc.server(),
+        &package_id_1,
+        ptb.clone(),
+        &tc.users[0].keypair
+    )
+    .await
+    .is_err());
+
+    // upgrade version
+    upgrade_whitelist(tc.test_cluster(), package_id_2, whitelist, cap).await;
+
+    // Succeeds with new package
     let ptb = whitelist_create_ptb(package_id_2, whitelist, initial_shared_version);
     assert!(get_key(
         tc.server(),
@@ -86,30 +120,6 @@ async fn test_whitelist_with_upgrade() {
 
     // But fails with old version
     let ptb = whitelist_create_ptb(package_id_1, whitelist, initial_shared_version);
-    assert!(get_key(
-        tc.server(),
-        &package_id_1,
-        ptb.clone(),
-        &tc.users[0].keypair
-    )
-    .await
-    .is_err());
-
-    let package_id_3 = tc.upgrade(package_id_2, upgrade_cap, "patterns").await;
-
-    // Succeeds with last package id
-    let ptb = whitelist_create_ptb(package_id_3, whitelist, initial_shared_version);
-    assert!(get_key(
-        tc.server(),
-        &package_id_1,
-        ptb.clone(),
-        &tc.users[0].keypair
-    )
-    .await
-    .is_ok());
-
-    // Fails with previous package id
-    let ptb = whitelist_create_ptb(package_id_2, whitelist, initial_shared_version);
     assert!(get_key(
         tc.server(),
         &package_id_1,
@@ -185,9 +195,9 @@ pub fn whitelist_create_ptb(
 }
 
 pub(crate) async fn create_whitelist(
-    cluster: &mut TestCluster,
+    cluster: &TestCluster,
     package_id: ObjectID,
-) -> (ObjectID, ObjectID) {
+) -> (ObjectID, ObjectID, u64) {
     // Create new whitelist
     let tx = cluster
         .sui_client()
@@ -210,13 +220,16 @@ pub(crate) async fn create_whitelist(
     // Read the id of the Whitelist and Cap objects
     let mut whitelist: Option<ObjectID> = None;
     let mut cap: Option<ObjectID> = None;
+    let mut initial_version: Option<u64> = None;
     for created in response.object_changes.unwrap() {
         if let ObjectChange::Created {
             object_type,
             object_id,
+            version,
             ..
         } = created
         {
+            initial_version.replace(version.value());
             match object_type.name.as_str() {
                 "Whitelist" => whitelist.replace(object_id),
                 "Cap" => cap.replace(object_id),
@@ -224,15 +237,11 @@ pub(crate) async fn create_whitelist(
             };
         }
     }
-    assert!(whitelist.is_some() && cap.is_some());
-    let whitelist = whitelist.unwrap();
-    let cap = cap.unwrap();
-
-    (whitelist, cap)
+    (whitelist.unwrap(), cap.unwrap(), initial_version.unwrap())
 }
 
 pub(crate) async fn add_user_to_whitelist(
-    cluster: &mut TestCluster,
+    cluster: &TestCluster,
     package_id: ObjectID,
     whitelist: ObjectID,
     cap: ObjectID,
@@ -252,6 +261,36 @@ pub(crate) async fn add_user_to_whitelist(
                 SuiJsonValue::from_object_id(whitelist),
                 SuiJsonValue::from_object_id(cap),
                 SuiJsonValue::new(json!(user)).unwrap(),
+            ],
+            None,
+            50_000_000,
+            None,
+        )
+        .await
+        .unwrap();
+    let response = cluster.sign_and_execute_transaction(&tx).await;
+    assert!(response.status_ok().unwrap());
+}
+
+pub(crate) async fn upgrade_whitelist(
+    cluster: &TestCluster,
+    package_id: ObjectID,
+    whitelist: ObjectID,
+    cap: ObjectID,
+) {
+    // Add the first user to the whitelist
+    let tx = cluster
+        .sui_client()
+        .transaction_builder()
+        .move_call(
+            cluster.get_address_0(),
+            package_id,
+            "whitelist",
+            "upgrade_version",
+            vec![],
+            vec![
+                SuiJsonValue::from_object_id(whitelist),
+                SuiJsonValue::from_object_id(cap),
             ],
             None,
             50_000_000,

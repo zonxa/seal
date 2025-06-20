@@ -3,12 +3,16 @@
 use crate::errors::InternalError::{
     DeprecatedSDKVersion, InvalidSDKVersion, MissingRequiredHeader,
 };
-use crate::externals::{current_epoch_time, duration_since, get_reference_gas_price};
+use crate::externals::{
+    current_epoch_time, duration_since, get_reference_gas_price, safe_duration_since,
+};
+use crate::key_server_options::{ClientConfig, ClientKeyType, ServerMode};
 use crate::metrics::{call_with_duration, observation_callback, status_callback, Metrics};
+use crate::mvr::mvr_forward_resolution;
 use crate::signed_message::{signed_message, signed_request};
-use crate::types::MasterKeyPOP;
-use anyhow::Result;
-use axum::extract::Request;
+use crate::types::{MasterKeyPOP, Network};
+use anyhow::{anyhow, Context, Result};
+use axum::extract::{Query, Request};
 use axum::http::{HeaderMap, HeaderValue};
 use axum::middleware::{from_fn_with_state, map_response, Next};
 use axum::response::Response;
@@ -17,7 +21,8 @@ use axum::{extract::State, Json};
 use core::time::Duration;
 use crypto::elgamal::encrypt;
 use crypto::ibe;
-use crypto::ibe::create_proof_of_possession;
+use crypto::ibe::{create_proof_of_possession, MASTER_KEY_LENGTH, SEED_LENGTH};
+use crypto::prefixed_hex::PrefixedHex;
 use errors::InternalError;
 use externals::get_latest_checkpoint_timestamp;
 use fastcrypto::ed25519::{Ed25519PublicKey, Ed25519Signature};
@@ -26,65 +31,59 @@ use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::VerifyingKey;
 use jsonrpsee::core::ClientError;
 use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
+use key_server_options::KeyServerOptions;
+use metrics::metrics_middleware;
 use mysten_service::get_mysten_service;
-use mysten_service::metrics::start_basic_prometheus_server;
+use mysten_service::metrics::start_prometheus_server;
 use mysten_service::package_name;
 use mysten_service::package_version;
 use mysten_service::serve;
 use rand::thread_rng;
-use semver::{Version, VersionReq};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::env;
 use std::future::Future;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Instant;
+use sui_rpc_client::SuiRpcClient;
 use sui_sdk::error::{Error, SuiRpcResult};
 use sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI;
 use sui_sdk::types::base_types::{ObjectID, SuiAddress};
 use sui_sdk::types::signature::GenericSignature;
 use sui_sdk::types::transaction::{ProgrammableTransaction, TransactionKind};
 use sui_sdk::verify_personal_message_signature::verify_personal_message_signature;
-use sui_sdk::{SuiClient, SuiClientBuilder};
+use sui_sdk::SuiClientBuilder;
 use tap::tap::TapFallible;
 use tokio::sync::watch::{channel, Receiver};
+use tokio::task::JoinHandle;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{debug, info, warn};
-use types::{ElGamalPublicKey, ElgamalEncryption, ElgamalVerificationKey, IbeMasterKey, Network};
+use tracing::{debug, error, info, warn};
+use types::{ElGamalPublicKey, ElgamalEncryption, ElgamalVerificationKey, IbeMasterKey};
 use valid_ptb::ValidPtb;
 
 mod cache;
 mod errors;
 mod externals;
 mod signed_message;
+mod sui_rpc_client;
 mod types;
+mod utils;
 mod valid_ptb;
 
+mod key_server_options;
 mod metrics;
+mod mvr;
 #[cfg(test)]
 pub mod tests;
 
-/// The allowed staleness of the full node.
-/// When setting this duration, note a timestamp on Sui may be a bit late compared to
-/// the current time, but it shouldn't be more than a second.
-const ALLOWED_STALENESS: Duration = Duration::from_secs(120);
-
-/// The interval at which the latest checkpoint timestamp is updated.
-const CHECKPOINT_UPDATE_INTERVAL: Duration = Duration::from_secs(10);
-
-/// The interval at which the reference gas price is updated.
-const RGP_UPDATE_INTERVAL: Duration = Duration::from_secs(60);
-
-/// The maximum time to live for a session key.
-const SESSION_KEY_TTL_MAX: u16 = 30;
-
-/// The 1% of the max budget.
 const GAS_BUDGET: u64 = 500_000_000;
+const GIT_VERSION: &str = utils::git_version!();
 
-const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// The minimum version of the SDK that is required to use this service.
-const SDK_VERSION_REQUIREMENT: &str = ">=0.3.5";
+/// Default encoding used for master and public keys for the key server.
+type DefaultEncoding = PrefixedHex;
 
 // The "session" certificate, signed by the user
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -94,6 +93,7 @@ struct Certificate {
     pub creation_time: u64,
     pub ttl_min: u16,
     pub signature: GenericSignature,
+    pub mvr_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -113,6 +113,7 @@ struct FetchKeyRequest {
 
 type KeyId = Vec<u8>;
 
+/// UNIX timestamp in milliseconds.
 type Timestamp = u64;
 
 #[derive(Serialize, Deserialize)]
@@ -128,61 +129,64 @@ struct FetchKeyResponse {
 
 #[derive(Clone)]
 struct Server {
-    sui_client: SuiClient,
-    network: Network,
-    master_key: IbeMasterKey,
-    key_server_object_id: ObjectID,
-    key_server_object_id_sig: MasterKeyPOP,
-    sdk_version_requirement: VersionReq,
+    sui_rpc_client: SuiRpcClient,
+    master_keys: MasterKeys,
+    key_server_oid_to_pop: HashMap<ObjectID, MasterKeyPOP>,
+    options: KeyServerOptions,
 }
 
 impl Server {
-    async fn new(
-        master_key: IbeMasterKey,
-        network: Network,
-        key_server_object_id: ObjectID,
-    ) -> Self {
-        let sui_client = SuiClientBuilder::default()
-            .build(&network.node_url())
-            .await
-            .expect("SuiClientBuilder should not failed unless provided with invalid network url");
-        info!(
-            "Server started with public key: {:?} and network: {:?}",
-            Base64::encode(
-                bcs::to_bytes(&ibe::public_key_from_master_key(&master_key)).expect("valid pk")
-            ),
-            network
+    async fn new(options: KeyServerOptions, metrics: Option<Arc<Metrics>>) -> Self {
+        let sui_rpc_client = SuiRpcClient::new(
+            SuiClientBuilder::default()
+                .request_timeout(options.rpc_config.timeout)
+                .build(&options.network.node_url())
+                .await
+                .expect(
+                    "SuiClientBuilder should not failed unless provided with invalid network url",
+                ),
+            options.rpc_config.retry_config.clone(),
+            metrics,
         );
+        info!("Server started with network: {:?}", options.network);
 
-        let key_server_object_id_sig =
-            create_proof_of_possession(&master_key, &key_server_object_id.into_bytes());
+        let master_keys = MasterKeys::load(&options).unwrap_or_else(|e| {
+            panic!("Failed to load master keys: {}", e);
+        });
 
-        let sdk_version_requirement =
-            VersionReq::parse(SDK_VERSION_REQUIREMENT).expect("valid SDK version requirement");
+        let key_server_oid_to_pop = options
+            .get_supported_key_server_object_ids()
+            .into_iter()
+            .map(|ks_oid| {
+                let key = master_keys
+                    .get_key_for_key_server(&ks_oid)
+                    .expect("checked already");
+                let pop = create_proof_of_possession(key, &ks_oid.into_bytes());
+                (ks_oid, pop)
+            })
+            .collect();
 
         Server {
-            sui_client,
-            network,
-            master_key,
-            key_server_object_id,
-            key_server_object_id_sig,
-            sdk_version_requirement,
+            sui_rpc_client,
+            master_keys,
+            key_server_oid_to_pop,
+            options,
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     async fn check_signature(
         &self,
-        pkg_id: &ObjectID,
         ptb: &ProgrammableTransaction,
         enc_key: &ElGamalPublicKey,
         enc_verification_key: &ElgamalVerificationKey,
         session_sig: &Ed25519Signature,
         cert: &Certificate,
+        package_name: String,
         req_id: Option<&str>,
     ) -> Result<(), InternalError> {
         // Check certificate.
-        if cert.ttl_min > SESSION_KEY_TTL_MAX
+        if from_mins(cert.ttl_min) > self.options.session_key_ttl_max
             || cert.creation_time > current_epoch_time()
             || current_epoch_time() < 60_000 * (cert.ttl_min as u64) // checks for overflow
             || current_epoch_time() - 60_000 * (cert.ttl_min as u64) > cert.creation_time
@@ -194,7 +198,12 @@ impl Server {
             return Err(InternalError::InvalidCertificate);
         }
 
-        let msg = signed_message(pkg_id, &cert.session_vk, cert.creation_time, cert.ttl_min);
+        let msg = signed_message(
+            package_name,
+            &cert.session_vk,
+            cert.creation_time,
+            cert.ttl_min,
+        );
         debug!(
             "Checking signature on message: {:?} (req_id: {:?})",
             msg, req_id
@@ -203,7 +212,7 @@ impl Server {
             cert.signature.clone(),
             msg.as_bytes(),
             cert.user,
-            Some(self.sui_client.clone()),
+            Some(self.sui_rpc_client.sui_client().clone()),
         )
         .await
         .tap_err(|e| {
@@ -241,7 +250,8 @@ impl Server {
         );
         // Evaluate the `seal_approve*` function
         let tx_data = self
-            .sui_client
+            .sui_rpc_client
+            .sui_client()
             .transaction_builder()
             .tx_data_for_dry_run(
                 sender,
@@ -252,11 +262,9 @@ impl Server {
                 None,
             )
             .await;
-        let dry_run_res = self
-            .sui_client
-            .read_api()
-            .dry_run_transaction_block(tx_data)
-            .await
+        let dry_run_res = self.sui_rpc_client
+                .dry_run_transaction_block(tx_data.clone())
+                .await
             .map_err(|e| {
                 if let Error::RpcError(ClientError::Call(ref e)) = e {
                     match e.code() {
@@ -299,32 +307,36 @@ impl Server {
         gas_price: u64,
         metrics: Option<&Metrics>,
         req_id: Option<&str>,
-    ) -> Result<Vec<KeyId>, InternalError> {
-        // Handle package upgrades: only call the latest version but use the first as the namespace
-        let (first_pkg_id, last_pkg_id) =
+        mvr_name: Option<String>,
+    ) -> Result<(ObjectID, Vec<KeyId>), InternalError> {
+        // Handle package upgrades: Use the first as the namespace
+        let first_pkg_id =
             call_with_duration(metrics.map(|m| &m.fetch_pkg_ids_duration), || async {
-                externals::fetch_first_and_last_pkg_id(&valid_ptb.pkg_id(), &self.network).await
+                externals::fetch_first_pkg_id(&valid_ptb.pkg_id(), &self.sui_rpc_client).await
             })
             .await?;
 
-        if valid_ptb.pkg_id() != last_pkg_id {
-            debug!(
-                "Last package version is {:?} while ptb uses {:?} (req_id: {:?})",
-                last_pkg_id,
-                valid_ptb.pkg_id(),
-                req_id
-            );
-            return Err(InternalError::OldPackageVersion);
-        }
+        // Make sure that the package is supported.
+        self.master_keys.has_key_for_package(&first_pkg_id)?;
+
+        // Check if the package id that MVR name points matches the first package ID, if provided.
+        externals::check_mvr_package_id(
+            &mvr_name,
+            &self.sui_rpc_client,
+            &self.options,
+            first_pkg_id,
+            req_id,
+        )
+        .await?;
 
         // Check all conditions
         self.check_signature(
-            &first_pkg_id,
             valid_ptb.ptb(),
             enc_key,
             enc_verification_key,
             request_signature,
             certificate,
+            mvr_name.unwrap_or(first_pkg_id.to_hex_uncompressed()),
             req_id,
         )
         .await?;
@@ -336,16 +348,25 @@ impl Server {
         .await?;
 
         // return the full id with the first package id as prefix
-        Ok(valid_ptb.full_ids(&first_pkg_id))
+        Ok((first_pkg_id, valid_ptb.full_ids(&first_pkg_id)))
     }
 
-    fn create_response(&self, ids: &[KeyId], enc_key: &ElGamalPublicKey) -> FetchKeyResponse {
-        debug!("Checking response for ids: {:?}", ids);
+    fn create_response(
+        &self,
+        first_pkg_id: ObjectID,
+        ids: &[KeyId],
+        enc_key: &ElGamalPublicKey,
+    ) -> FetchKeyResponse {
+        debug!("Creating response for ids: {:?}", ids);
+        let master_key = self
+            .master_keys
+            .get_key_for_package(&first_pkg_id)
+            .expect("checked already");
         let decryption_keys = ids
             .iter()
             .map(|id| {
                 // Requested key
-                let key = ibe::extract(&self.master_key, id);
+                let key = ibe::extract(master_key, id);
                 // ElGamal encryption of key under the user's public key
                 let encrypted_key = encrypt(&mut thread_rng(), &key, enc_key);
                 DecryptionKey {
@@ -369,23 +390,23 @@ impl Server {
         subscriber: Option<G>,
         duration_callback: Option<H>,
         success_callback: Option<I>,
-    ) -> Receiver<u64>
+    ) -> (Receiver<u64>, JoinHandle<()>)
     where
-        F: Fn(SuiClient) -> Fut + Send + 'static,
+        F: Fn(SuiRpcClient) -> Fut + Send + 'static,
         Fut: Future<Output = SuiRpcResult<u64>> + Send,
         G: Fn(u64) + Send + 'static,
         H: Fn(Duration) + Send + 'static,
         I: Fn(bool) + Send + 'static,
     {
         let (sender, mut receiver) = channel(0);
-        let local_client = self.sui_client.clone();
+        let local_client = self.sui_rpc_client.clone();
         let mut interval = tokio::time::interval(update_interval);
 
-        // In case of a missed tick due to a slow responding full node, we don't need to
+        // In case of a missed tick due to a slow-responding full node, we don't need to
         // catch up but rather just delay the next tick.
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
-        tokio::task::spawn(async move {
+        let handle = tokio::task::spawn(async move {
             loop {
                 let now = Instant::now();
                 let result = fetch_fn(local_client.clone()).await;
@@ -405,7 +426,7 @@ impl Server {
                             subscriber(new_value);
                         }
                     }
-                    Err(e) => warn!("Failed to get {}: {:?}", value_name, e),
+                    Err(e) => debug!("Failed to get {}: {:?}", value_name, e),
                 }
                 interval.tick().await;
             }
@@ -418,18 +439,17 @@ impl Server {
             .changed()
             .await
             .unwrap_or_else(|_| panic!("Failed to get {}", value_name));
-        receiver
+        (receiver, handle)
     }
 
     /// Spawns a thread that fetches the latest checkpoint timestamp and sends it to a [Receiver] once per `update_interval`.
     /// Returns the [Receiver].
     async fn spawn_latest_checkpoint_timestamp_updater(
         &self,
-        update_interval: Duration,
         metrics: Option<&Metrics>,
-    ) -> Receiver<Timestamp> {
+    ) -> (Receiver<Timestamp>, JoinHandle<()>) {
         self.spawn_periodic_updater(
-            update_interval,
+            self.options.checkpoint_update_interval,
             get_latest_checkpoint_timestamp,
             "latest checkpoint timestamp",
             metrics.map(|m| {
@@ -451,11 +471,10 @@ impl Server {
     /// Returns the [Receiver].
     async fn spawn_reference_gas_price_updater(
         &self,
-        update_interval: Duration,
         metrics: Option<&Metrics>,
-    ) -> Receiver<u64> {
+    ) -> (Receiver<u64>, JoinHandle<()>) {
         self.spawn_periodic_updater(
-            update_interval,
+            self.options.rgp_update_interval,
             get_reference_gas_price,
             "RGP",
             None::<fn(u64)>,
@@ -471,8 +490,8 @@ async fn handle_fetch_key_internal(
     payload: &FetchKeyRequest,
     req_id: Option<&str>,
     sdk_version: &str,
-) -> Result<Vec<KeyId>, InternalError> {
-    app_state.check_full_node_is_fresh(ALLOWED_STALENESS)?;
+) -> Result<(ObjectID, Vec<KeyId>), InternalError> {
+    app_state.check_full_node_is_fresh()?;
 
     let valid_ptb = ValidPtb::try_from_base64(&payload.ptb)?;
 
@@ -493,6 +512,7 @@ async fn handle_fetch_key_internal(
             app_state.reference_gas_price(),
             Some(&app_state.metrics),
             req_id,
+            payload.certificate.mvr_name.clone(),
         )
         .await.tap_ok(|_| info!(
             "Valid request: {}",
@@ -523,25 +543,38 @@ async fn handle_fetch_key(
     handle_fetch_key_internal(&app_state, &payload, req_id, sdk_version)
         .await
         .tap_err(|e| app_state.metrics.observe_error(e.as_str()))
-        .map(|full_id| Json(app_state.server.create_response(&full_id, &payload.enc_key)))
+        .map(|(first_pkg_id, full_ids)| {
+            Json(
+                app_state
+                    .server
+                    .create_response(first_pkg_id, &full_ids, &payload.enc_key),
+            )
+        })
 }
 
 #[derive(Serialize, Deserialize)]
 struct GetServiceResponse {
     service_id: ObjectID,
     pop: MasterKeyPOP,
-    version: String,
 }
 
 async fn handle_get_service(
     State(app_state): State<MyState>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<GetServiceResponse>, InternalError> {
     app_state.metrics.service_requests.inc();
-    Ok(Json(GetServiceResponse {
-        service_id: app_state.server.key_server_object_id,
-        pop: app_state.server.key_server_object_id_sig,
-        version: PACKAGE_VERSION.to_string(),
-    }))
+    let service_id = match params.get("service_id") {
+        Some(id) => ObjectID::from_hex_literal(id).map_err(|_| InternalError::InvalidServiceId)?,
+        None => app_state.server.options.get_legacy_key_server_object_id()?,
+    };
+
+    let pop = *app_state
+        .server
+        .key_server_oid_to_pop
+        .get(&service_id)
+        .ok_or(InternalError::InvalidServiceId)?;
+
+    Ok(Json(GetServiceResponse { service_id, pop }))
 }
 
 #[derive(Clone)]
@@ -549,16 +582,17 @@ struct MyState {
     metrics: Arc<Metrics>,
     server: Arc<Server>,
     latest_checkpoint_timestamp_receiver: Receiver<Timestamp>,
-    reference_gas_price: Receiver<u64>,
+    reference_gas_price_receiver: Receiver<u64>,
 }
 
 impl MyState {
-    fn check_full_node_is_fresh(&self, allowed_staleness: Duration) -> Result<(), InternalError> {
-        let staleness = duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
-        if staleness > allowed_staleness.as_millis() as i64 {
+    fn check_full_node_is_fresh(&self) -> Result<(), InternalError> {
+        // Compute the staleness of the latest checkpoint timestamp.
+        let staleness = safe_duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
+        if staleness > self.server.options.allowed_staleness {
             warn!(
                 "Full node is stale. Latest checkpoint is {} ms old.",
-                staleness
+                staleness.as_millis()
             );
             return Err(InternalError::Failure);
         }
@@ -566,12 +600,17 @@ impl MyState {
     }
 
     fn reference_gas_price(&self) -> u64 {
-        *self.reference_gas_price.borrow()
+        *self.reference_gas_price_receiver.borrow()
     }
 
     fn validate_sdk_version(&self, version_string: &str) -> Result<(), InternalError> {
         let version = Version::parse(version_string).map_err(|_| InvalidSDKVersion)?;
-        if !self.server.sdk_version_requirement.matches(&version) {
+        if !self
+            .server
+            .options
+            .sdk_version_requirement
+            .matches(&version)
+        {
             return Err(DeprecatedSDKVersion);
         }
         Ok(())
@@ -611,59 +650,156 @@ async fn handle_request_headers(
 
 /// Middleware to add headers to all responses.
 async fn add_response_headers(mut response: Response) -> Response {
-    response.headers_mut().insert(
+    let headers = response.headers_mut();
+    headers.insert(
         "X-KeyServer-Version",
-        HeaderValue::from_static(PACKAGE_VERSION),
+        HeaderValue::from_static(package_version!()),
+    );
+    headers.insert(
+        "X-KeyServer-GitVersion",
+        HeaderValue::from_static(GIT_VERSION),
     );
     response
 }
 
+/// Creates a [prometheus::core::Collector] that tracks the uptime of the server.
+fn uptime_metric(version: &str) -> Box<dyn prometheus::core::Collector> {
+    let opts = prometheus::opts!("uptime", "uptime of the key server in seconds")
+        .variable_label("version");
+
+    let start_time = std::time::Instant::now();
+    let uptime = move || start_time.elapsed().as_secs();
+    let metric = prometheus_closure_metric::ClosureMetric::new(
+        opts,
+        prometheus_closure_metric::ValueType::Counter,
+        uptime,
+        &[version],
+    )
+    .unwrap();
+
+    Box::new(metric)
+}
+
+/// Spawn server's background tasks:
+///  - background checkpoint downloader
+///  - reference gas price updater.
+///
+/// The returned JoinHandle can be used to catch any tasks error or panic.
+async fn start_server_background_tasks(
+    server: Arc<Server>,
+    metrics: Arc<Metrics>,
+) -> (
+    Receiver<Timestamp>,
+    Receiver<u64>,
+    JoinHandle<anyhow::Result<()>>,
+) {
+    // Spawn background checkpoint timestamp updater.
+    let (latest_checkpoint_timestamp_receiver, latest_checkpoint_timestamp_handle) = server
+        .spawn_latest_checkpoint_timestamp_updater(Some(&metrics))
+        .await;
+
+    // Spawn background reference gas price updater.
+    let (reference_gas_price_receiver, reference_gas_price_handle) = server
+        .spawn_reference_gas_price_updater(Some(&metrics))
+        .await;
+
+    // Spawn a monitor task that will exit the program if either updater task panics
+    let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+        tokio::select! {
+            result = latest_checkpoint_timestamp_handle => {
+                if let Err(e) = result {
+                    error!("Latest checkpoint timestamp updater panicked: {:?}", e);
+                    if e.is_panic() {
+                        std::panic::resume_unwind(e.into_panic());
+                    }
+                    return Err(e.into());
+                }
+            }
+            result = reference_gas_price_handle => {
+                if let Err(e) = result {
+                    error!("Reference gas price updater panicked: {:?}", e);
+                    if e.is_panic() {
+                        std::panic::resume_unwind(e.into_panic());
+                    }
+                    return Err(e.into());
+                }
+            }
+        }
+
+        unreachable!("One of the background tasks should have returned an error");
+    });
+
+    (
+        latest_checkpoint_timestamp_receiver,
+        reference_gas_price_receiver,
+        handle,
+    )
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let master_key = env::var("MASTER_KEY").expect("MASTER_KEY must be set");
-    let object_id = env::var("KEY_SERVER_OBJECT_ID").expect("KEY_SERVER_OBJECT_ID must be set");
-    let network = env::var("NETWORK")
-        .map(|n| Network::from_str(&n))
-        .unwrap_or(Network::Testnet);
-
     let _guard = mysten_service::logging::init();
-    info!("Logging set up, setting up metrics");
 
-    // initialize metrics
-    let registry = start_basic_prometheus_server();
+    // If CONFIG_PATH is set, read the configuration from the file.
+    // Otherwise, use the legacy environment variables.
+    let options = match env::var("CONFIG_PATH") {
+        Ok(config_path) => {
+            info!("Loading config file: {}", config_path);
+            serde_yaml::from_reader(
+                std::fs::File::open(&config_path)
+                    .context(format!("Cannot open configuration file {config_path}"))?,
+            )
+            .expect("Failed to parse configuration file")
+        }
+        Err(_) => {
+            info!("Using legacy environment variables for configuration");
+            // TODO: remove this when the legacy key server is no longer needed
+            let network = env::var("NETWORK")
+                .map(|n| Network::from_str(&n))
+                .unwrap_or(Network::Testnet);
+            KeyServerOptions::new_open_server_with_default_values(
+                network,
+                decode_object_id("LEGACY_KEY_SERVER_OBJECT_ID")?,
+                decode_object_id("KEY_SERVER_OBJECT_ID")?,
+            )
+        }
+    };
+
+    info!("Setting up metrics");
+    let registry = start_prometheus_server(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+        options.metrics_host_port,
+    ))
+    .default_registry();
+
+    // Tracks the uptime of the server.
+    let registry_clone = registry.clone();
+    tokio::task::spawn(async move {
+        registry_clone
+            .register(uptime_metric(
+                format!("{}-{}", package_version!(), GIT_VERSION).as_str(),
+            ))
+            .expect("metrics defined at compile time must be valid");
+    });
+
     // hook up custom application metrics
     let metrics = Arc::new(Metrics::new(&registry));
-    info!("Metrics set up, starting service");
 
-    info!("Starting server, version {}", PACKAGE_VERSION);
+    info!(
+        "Starting server, version {}",
+        format!("{}-{}", package_version!(), GIT_VERSION).as_str()
+    );
+    options.validate()?;
+    let server = Arc::new(Server::new(options, Some(metrics.clone())).await);
 
-    let s = Server::new(
-        IbeMasterKey::from_byte_array(
-            &Base64::decode(&master_key)
-                .expect("MASTER_KEY should be base64 encoded")
-                .try_into()
-                .expect("Invalid MASTER_KEY length"),
-        )
-        .expect("Invalid MASTER_KEY value"),
-        network,
-        ObjectID::from_hex_literal(&object_id).expect("Invalid KEY_SERVER_OBJECT_ID"),
-    )
-    .await;
-    let server = Arc::new(s);
-
-    // Spawn tasks that update the state of the server.
-    let latest_checkpoint_timestamp_receiver = server
-        .spawn_latest_checkpoint_timestamp_updater(CHECKPOINT_UPDATE_INTERVAL, Some(&metrics))
-        .await;
-    let reference_gas_price = server
-        .spawn_reference_gas_price_updater(RGP_UPDATE_INTERVAL, Some(&metrics))
-        .await;
+    let (latest_checkpoint_timestamp_receiver, reference_gas_price_receiver, monitor_handle) =
+        start_server_background_tasks(server.clone(), metrics.clone()).await;
 
     let state = MyState {
         metrics,
         server,
         latest_checkpoint_timestamp_receiver,
-        reference_gas_price,
+        reference_gas_price_receiver,
     };
 
     let cors = CorsLayer::new()
@@ -679,9 +815,285 @@ async fn main() -> Result<()> {
                 .route("/v1/service", get(handle_get_service))
                 .layer(from_fn_with_state(state.clone(), handle_request_headers))
                 .layer(map_response(add_response_headers))
+                // Outside most middlewares that tracks metrics for HTTP requests and response
+                // status.
+                .layer(from_fn_with_state(
+                    state.metrics.clone(),
+                    metrics_middleware,
+                ))
                 .with_state(state),
         )
         .layer(cors);
 
-    serve(app).await
+    tokio::select! {
+        server_result = serve(app) => {
+            error!("Server stopped with status {:?}", server_result);
+            std::process::exit(1);
+        }
+        monitor_result = monitor_handle => {
+            error!("Background tasks stopped with error: {:?}", monitor_result);
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Creates a [Duration] from a given number of minutes.
+/// Can be removed once the `Duration::from_mins` method is stabilized.
+pub const fn from_mins(mins: u16) -> Duration {
+    // safe cast since 64 bits is more than enough to hold 2^16 * 60 seconds
+    Duration::from_secs((mins * 60) as u64)
+}
+
+#[derive(Clone)]
+enum MasterKeys {
+    Open {
+        master_key: IbeMasterKey,
+    },
+    Permissioned {
+        pkg_id_to_key: HashMap<ObjectID, IbeMasterKey>,
+        key_server_oid_to_key: HashMap<ObjectID, IbeMasterKey>,
+    },
+}
+
+impl MasterKeys {
+    fn load(options: &KeyServerOptions) -> Result<Self> {
+        info!("Loading keys from env variables");
+        match &options.server_mode {
+            ServerMode::Open { .. } => {
+                let master_key = match decode_master_key::<DefaultEncoding>("MASTER_KEY") {
+                    Ok(master_key) => master_key,
+
+                    // TODO: Fallback to Base64 encoding for backward compatibility.
+                    Err(_) => decode_master_key::<Base64>("MASTER_KEY")?,
+                };
+                Ok(MasterKeys::Open { master_key })
+            }
+            ServerMode::Permissioned { client_configs } => {
+                let mut pkg_id_to_key = HashMap::new();
+                let mut key_server_oid_to_key = HashMap::new();
+                let seed = decode_byte_array::<DefaultEncoding, SEED_LENGTH>("MASTER_SEED")?;
+                for config in client_configs {
+                    let master_key = match &config.client_master_key {
+                        ClientKeyType::Derived { derivation_index } => {
+                            ibe::derive_master_key(&seed, *derivation_index)
+                        }
+                        ClientKeyType::Imported { env_var } => {
+                            decode_master_key::<DefaultEncoding>(env_var)?
+                        }
+                        ClientKeyType::Exported { .. } => continue,
+                    };
+
+                    info!(
+                        "Client {:?} uses public key: {:?}",
+                        config.name,
+                        DefaultEncoding::encode(
+                            ibe::public_key_from_master_key(&master_key).to_byte_array()
+                        )
+                    );
+
+                    for pkg_id in &config.package_ids {
+                        pkg_id_to_key.insert(*pkg_id, master_key);
+                    }
+                    key_server_oid_to_key.insert(config.key_server_object_id, master_key);
+                }
+
+                Self::log_unassigned_public_keys(client_configs, &seed);
+
+                // No clients, can abort.
+                if pkg_id_to_key.is_empty() {
+                    return Err(anyhow!("No clients found in the configuration"));
+                }
+
+                Ok(MasterKeys::Permissioned {
+                    pkg_id_to_key,
+                    key_server_oid_to_key,
+                })
+            }
+        }
+    }
+
+    /// Log the next 10 unassigned public keys.
+    /// This is done to make it easier to find a public key of a derived key that's not yet assigned to a client.
+    /// Can be removed once an endpoint to get public keys from derivation indices is implemented.
+    fn log_unassigned_public_keys(client_configs: &[ClientConfig], seed: &[u8; SEED_LENGTH]) {
+        // The derivation indices are in incremental order, so the next free index is the max + 1 or 0 if no derivation indices are used.
+        let next_free_derivation_index = client_configs
+            .iter()
+            .filter_map(|c| match &c.client_master_key {
+                ClientKeyType::Derived { derivation_index } => Some(*derivation_index),
+                ClientKeyType::Exported {
+                    deprecated_derivation_index,
+                } => Some(*deprecated_derivation_index),
+                _ => None,
+            })
+            .max()
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        for i in 0..10 {
+            let key = ibe::derive_master_key(seed, next_free_derivation_index + i);
+            info!(
+                "Unassigned derived public key with index {}: {:?}",
+                next_free_derivation_index + i,
+                DefaultEncoding::encode(ibe::public_key_from_master_key(&key).to_byte_array())
+            );
+        }
+    }
+
+    fn has_key_for_package(&self, id: &ObjectID) -> Result<(), InternalError> {
+        self.get_key_for_package(id).map(|_| ())
+    }
+
+    fn get_key_for_package(&self, id: &ObjectID) -> Result<&IbeMasterKey, InternalError> {
+        match self {
+            MasterKeys::Open { master_key } => Ok(master_key),
+            MasterKeys::Permissioned { pkg_id_to_key, .. } => pkg_id_to_key
+                .get(id)
+                .ok_or(InternalError::UnsupportedPackageId),
+        }
+    }
+
+    fn get_key_for_key_server(&self, id: &ObjectID) -> Result<&IbeMasterKey, InternalError> {
+        match self {
+            MasterKeys::Open { master_key } => Ok(master_key),
+            MasterKeys::Permissioned {
+                key_server_oid_to_key,
+                ..
+            } => key_server_oid_to_key
+                .get(id)
+                .ok_or(InternalError::InvalidServiceId),
+        }
+    }
+}
+
+// test master keys
+
+/// Read a byte array from an environment variable and decode it using the specified encoding.
+fn decode_byte_array<E: Encoding, const N: usize>(env_name: &str) -> Result<[u8; N]> {
+    let hex_string =
+        env::var(env_name).map_err(|_| anyhow!("Environment variable {} must be set", env_name))?;
+    let bytes = E::decode(&hex_string)
+        .map_err(|_| anyhow!("Environment variable {} should be hex encoded", env_name))?;
+    bytes.try_into().map_err(|_| {
+        anyhow!(
+            "Invalid byte array length for environment variable {env_name}. Must be {N} bytes long"
+        )
+    })
+}
+
+/// Read a master key from an environment variable.
+fn decode_master_key<E: Encoding>(env_name: &str) -> Result<IbeMasterKey> {
+    let bytes = decode_byte_array::<E, MASTER_KEY_LENGTH>(env_name)?;
+    IbeMasterKey::from_byte_array(&bytes)
+        .map_err(|_| anyhow!("Invalid master key for environment variable {env_name}"))
+}
+
+/// Read an ObjectID from an environment variable.
+fn decode_object_id(env_name: &str) -> Result<ObjectID> {
+    let hex_string =
+        env::var(env_name).map_err(|_| anyhow!("Environment variable {} must be set", env_name))?;
+    ObjectID::from_hex_literal(&hex_string)
+        .map_err(|_| anyhow!("Invalid ObjectID for environment variable {env_name}"))
+}
+
+#[test]
+fn test_master_keys_open_mode() {
+    use fastcrypto::groups::GroupElement;
+    use temp_env::with_vars;
+
+    let options = KeyServerOptions::new_open_server_with_default_values(
+        Network::Testnet,
+        ObjectID::from_hex_literal("0x1").unwrap(),
+        ObjectID::from_hex_literal("0x2").unwrap(),
+    );
+
+    with_vars([("MASTER_KEY", None::<&str>)], || {
+        assert!(MasterKeys::load(&options).is_err());
+    });
+
+    let sk = IbeMasterKey::generator();
+    let sk_as_bytes = DefaultEncoding::encode(bcs::to_bytes(&sk).unwrap());
+    with_vars([("MASTER_KEY", Some(sk_as_bytes))], || {
+        let mk = MasterKeys::load(&options);
+        assert_eq!(
+            mk.unwrap()
+                .get_key_for_package(&ObjectID::from_hex_literal("0x1").unwrap())
+                .unwrap(),
+            &sk
+        );
+    });
+}
+
+#[test]
+fn test_master_keys_permissioned_mode() {
+    use crate::key_server_options::ClientConfig;
+    use fastcrypto::groups::GroupElement;
+    use temp_env::with_vars;
+
+    let mut options = KeyServerOptions::new_open_server_with_default_values(
+        Network::Testnet,
+        ObjectID::from_hex_literal("0x1").unwrap(),
+        ObjectID::from_hex_literal("0x2").unwrap(),
+    );
+    options.server_mode = ServerMode::Permissioned {
+        client_configs: vec![
+            ClientConfig {
+                name: "alice".to_string(),
+                package_ids: vec![ObjectID::from_hex_literal("0x1").unwrap()],
+                key_server_object_id: ObjectID::from_hex_literal("0x2").unwrap(),
+                client_master_key: ClientKeyType::Imported {
+                    env_var: "ALICE_KEY".to_string(),
+                },
+            },
+            ClientConfig {
+                name: "bob".to_string(),
+                package_ids: vec![ObjectID::from_hex_literal("0x3").unwrap()],
+                key_server_object_id: ObjectID::from_hex_literal("0x4").unwrap(),
+                client_master_key: ClientKeyType::Derived {
+                    derivation_index: 100,
+                },
+            },
+            ClientConfig {
+                name: "dan".to_string(),
+                package_ids: vec![ObjectID::from_hex_literal("0x5").unwrap()],
+                key_server_object_id: ObjectID::from_hex_literal("0x6").unwrap(),
+                client_master_key: ClientKeyType::Derived {
+                    derivation_index: 200,
+                },
+            },
+        ],
+    };
+    let sk = IbeMasterKey::generator();
+    let sk_as_bytes = DefaultEncoding::encode(bcs::to_bytes(&sk).unwrap());
+    let seed = [1u8; 32];
+    with_vars(
+        [
+            ("MASTER_SEED", Some(sk_as_bytes.clone())),
+            ("ALICE_KEY", Some(DefaultEncoding::encode(seed))),
+        ],
+        || {
+            let mk = MasterKeys::load(&options).unwrap();
+            let k1 = mk.get_key_for_key_server(&ObjectID::from_hex_literal("0x4").unwrap());
+            let k2 = mk.get_key_for_key_server(&ObjectID::from_hex_literal("0x6").unwrap());
+            assert!(k1.is_ok());
+            assert_ne!(k1, k2);
+        },
+    );
+    with_vars(
+        [
+            ("MASTER_SEED", None::<&str>),
+            ("ALICE_KEY", Some(&DefaultEncoding::encode(seed))),
+        ],
+        || {
+            assert!(MasterKeys::load(&options).is_err());
+        },
+    );
+    with_vars(
+        [
+            ("MASTER_SEED", Some(&sk_as_bytes)),
+            ("ALICE_KEY", None::<&String>),
+        ],
+        || {
+            assert!(MasterKeys::load(&options).is_err());
+        },
+    );
 }

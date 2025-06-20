@@ -6,10 +6,17 @@ import { useNetworkVariable } from './networkConfig';
 import { AlertDialog, Button, Card, Dialog, Flex, Grid } from '@radix-ui/themes';
 import { fromHex } from '@mysten/sui/utils';
 import { Transaction } from '@mysten/sui/transactions';
-import { getAllowlistedKeyServers, SealClient, SessionKey, type SessionKeyType } from '@mysten/seal';
+import {
+  getAllowlistedKeyServers,
+  KeyServerConfig,
+  SealClient,
+  SessionKey,
+  type SessionKeyType,
+} from '@mysten/seal';
 import { useParams } from 'react-router-dom';
 import { downloadAndDecrypt, getObjectExplorerLink, MoveCallConstructor } from './utils';
 import { set, get } from 'idb-keyval';
+import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
 
 const TTL_MIN = 10;
 export interface FeedData {
@@ -31,7 +38,10 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
   const suiClient = useSuiClient();
   const client = new SealClient({
     suiClient,
-    serverObjectIds: getAllowlistedKeyServers('testnet'),
+    serverConfigs: getAllowlistedKeyServers('testnet').map((id) => ({
+      objectId: id,
+      weight: 1,
+    })),
     verifyKeyServers: false,
   });
   const packageId = useNetworkVariable('packageId');
@@ -67,7 +77,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
       .getDynamicFields({
         parentId: id!,
       })
-      .then((res: { data: any[]; }) => res.data.map((obj) => obj.name.value as string));
+      .then((res: { data: any[] }) => res.data.map((obj) => obj.name.value as string));
     const fields = (allowlist.data?.content as { fields: any })?.fields || {};
     const feedData = {
       allowlistId: id!,
@@ -81,35 +91,43 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
     const imported: SessionKeyType = await get('sessionKey');
 
     if (imported) {
-      const currentSessionKey = await SessionKey.import(imported, {});
-      console.log('loaded currentSessionKey', currentSessionKey);
-      if (
-        currentSessionKey &&
-        !currentSessionKey.isExpired() &&
-        currentSessionKey.getAddress() === suiAddress
-      ) {
-        const moveCallConstructor = constructMoveCall(packageId, allowlistId);
-        downloadAndDecrypt(
-          blobIds,
-          currentSessionKey,
-          suiClient,
-          client,
-          moveCallConstructor,
-          setError,
-          setDecryptedFileUrls,
-          setIsDialogOpen,
-          setReloadKey,
+      try {
+        const currentSessionKey = await SessionKey.import(
+          imported,
+          new SuiClient({ url: getFullnodeUrl('testnet') }),
         );
-        return;
+        console.log('loaded currentSessionKey', currentSessionKey);
+        if (
+          currentSessionKey &&
+          !currentSessionKey.isExpired() &&
+          currentSessionKey.getAddress() === suiAddress
+        ) {
+          const moveCallConstructor = constructMoveCall(packageId, allowlistId);
+          downloadAndDecrypt(
+            blobIds,
+            currentSessionKey,
+            suiClient,
+            client,
+            moveCallConstructor,
+            setError,
+            setDecryptedFileUrls,
+            setIsDialogOpen,
+            setReloadKey,
+          );
+          return;
+        }
+      } catch (error) {
+        console.log('Imported session key is expired', error);
       }
     }
 
     set('sessionKey', null);
 
-    const sessionKey = new SessionKey({
+    const sessionKey = await SessionKey.create({
       address: suiAddress,
       packageId,
       ttlMin: TTL_MIN,
+      suiClient,
     });
 
     try {
@@ -118,7 +136,7 @@ const Feeds: React.FC<{ suiAddress: string }> = ({ suiAddress }) => {
           message: sessionKey.getPersonalMessage(),
         },
         {
-          onSuccess: async (result: { signature: string; }) => {
+          onSuccess: async (result: { signature: string }) => {
             await sessionKey.setPersonalMessageSignature(result.signature);
             const moveCallConstructor = await constructMoveCall(packageId, allowlistId);
             await downloadAndDecrypt(

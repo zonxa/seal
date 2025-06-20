@@ -1,21 +1,30 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::time::Duration;
+use prometheus::Registry;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing_test::traced_test;
 
 use crate::externals::get_latest_checkpoint_timestamp;
+use crate::key_server_options::RetryConfig;
+use crate::metrics::Metrics;
+use crate::start_server_background_tasks;
+use crate::sui_rpc_client::SuiRpcClient;
 use crate::tests::SealTestCluster;
 
 #[tokio::test]
 async fn test_get_latest_checkpoint_timestamp() {
-    let tc = SealTestCluster::new(0, 0).await;
+    let tc = SealTestCluster::new(0).await;
 
     let tolerance = 20000;
-    let timestamp: u64 = get_latest_checkpoint_timestamp(tc.cluster.sui_client().clone())
-        .await
-        .unwrap();
+    let timestamp = get_latest_checkpoint_timestamp(SuiRpcClient::new(
+        tc.cluster.sui_client().clone(),
+        RetryConfig::default(),
+        None,
+    ))
+    .await
+    .unwrap();
 
     let actual_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -28,14 +37,14 @@ async fn test_get_latest_checkpoint_timestamp() {
 
 #[tokio::test]
 async fn test_timestamp_updater() {
-    let tc = SealTestCluster::new(1, 0).await;
-
-    let update_interval = Duration::from_secs(1);
+    let mut tc = SealTestCluster::new(0).await;
+    tc.add_open_server().await;
 
     let mut receiver = tc
         .server()
-        .spawn_latest_checkpoint_timestamp_updater(update_interval, None)
-        .await;
+        .spawn_latest_checkpoint_timestamp_updater(None)
+        .await
+        .0;
 
     let tolerance = 20000;
 
@@ -60,17 +69,40 @@ async fn test_timestamp_updater() {
 #[traced_test]
 #[tokio::test]
 async fn test_rgp_updater() {
-    let tc = SealTestCluster::new(1, 0).await;
+    let mut tc = SealTestCluster::new(0).await;
+    tc.add_open_server().await;
 
-    let update_interval = Duration::from_secs(1);
-
-    let mut receiver = tc
-        .server()
-        .spawn_reference_gas_price_updater(update_interval, None)
-        .await;
+    let mut receiver = tc.server().spawn_reference_gas_price_updater(None).await.0;
 
     let price = *receiver.borrow_and_update();
     assert_eq!(price, tc.cluster.get_reference_gas_price().await);
 
     receiver.changed().await.expect("Failed to get latest rgp");
+}
+
+// Tests that the server background task monitor can catch background task errors and panics.
+#[tokio::test]
+async fn test_server_background_task_monitor() {
+    let mut tc = SealTestCluster::new(0).await;
+    tc.add_open_server().await;
+
+    let metrics_registry = Registry::default();
+    let metrics = Arc::new(Metrics::new(&metrics_registry));
+
+    let (latest_checkpoint_timestamp_receiver, _reference_gas_price_receiver, monitor_handle) =
+        start_server_background_tasks(Arc::new(tc.server().clone()), metrics.clone()).await;
+
+    // Drop the receiver to trigger the panic in the background
+    // spawn_latest_checkpoint_timestamp_updater task.
+    drop(latest_checkpoint_timestamp_receiver);
+
+    // Wait for the monitor to exit with an error. This should happen in a timely manner.
+    let result = tokio::time::timeout(std::time::Duration::from_secs(10), monitor_handle)
+        .await
+        .expect("Waiting for background monitor to exit timed out after 10 seconds");
+
+    // Check that the result is a panic.
+    assert!(result.is_err(), "Expected JoinError");
+    let err = result.unwrap_err();
+    assert!(err.is_panic(), "Expected JoinError::Panic");
 }

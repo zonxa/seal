@@ -1,0 +1,86 @@
+#### Mandatory configurations ####
+
+# Network to use. Should be one of:
+# network: Testnet
+# network: Mainnet
+# network: Devnet
+# network: !Custom
+#   node_url: 'url_to_node_endpoint'
+#
+# Use Custom for production deployments, and set the `node_url` 
+# with the URL of your Full Node endpoint.
+#
+# Example:
+network: Testnet
+
+
+# Server mode. The server can either work in Open/permissionless mode that 
+# supports all packages, or in Permissioned mode that only supports
+# whitelisted packages .
+#
+# For the Open mode, set the registered key server object ID to be used, e.g.,:
+# server_mode: !Open
+#   key_server_object_id: '0x0000000000000000000000000000000000000000000000000000000000000000'
+#
+# Example:
+server_mode: !Open
+  key_server_object_id: '0x0000000000000000000000000000000000000000000000000000000000000000'
+
+#
+# For the Permissioned mode, set the allowed clients and their configurations.
+# A client config contains:
+# - Client name - for debugging purposes only, can always be modified.
+# - The associated key server object id. Should never change.
+# - The allowed packages with Seal policies. Must be unique and point to the
+#   first versions of the packages. Packages can be added to the list later.
+# - The type of the client master key. See below.
+#
+# In normal setting, use Derived key type for deriving the client master key
+# from the server master key. Set derivation_index to be a unique derivation
+# index used for this client. This value must *never* change, else a different
+# key might be used for that client.
+#
+# If a client master key is exported, change the type to Exported and track
+# the derivation index in deprecated_derivation_index (to make sure it is
+# not used in the future).
+#
+# In case the client master key is imported, use Imported and set the env_var
+# to an environment variable that contains the BLS key in hex format.
+#
+# Example of a permissioned server mode configuration:
+# server_mode: !Permissioned
+#   client_configs:
+#     - name: "alice"
+#       client_master_key: !Derived
+#         derivation_index: 1
+#       key_server_object_id: "0xaaaa000000000000000000000000000000000000000000000000000000000001"
+#       package_ids:
+#         - "0x1111111111111111111111111111111111111111111111111111111111111111"
+#     - name: "bob"
+#       client_master_key: !Imported
+#         env_var: "BOB_BLS_KEY"
+#       key_server_object_id: "0xbbbb000000000000000000000000000000000000000000000000000000000002"
+#       package_ids:
+#         - "0x2222222222222222222222222222222222222222222222222222222222222222"
+#         - "0x2222222222222222222222222222222222222222222222222222222222222223"
+#     - name: "carol"
+#       client_master_key: !Exported
+#         deprecated_derivation_index: 3
+#       key_server_object_id: "0xcccc000000000000000000000000000000000000000000000000000000000003"
+#       package_ids:
+#         - "0x3333333333333333333333333333333333333333333333333333333333333333"
+
+
+#### Optional advanced configurations ####
+#
+# The port that the prometheus agent can use to poll for the metrics.
+# metrics_host_port: 9184
+#
+# The minimum version of the SDK that is required to use this service.
+# sdk_version_requirement: '>=0.4.5'
+#
+# Update intervals and timeouts for various operations. Example values are shown below.
+# checkpoint_update_interval: '10s'
+# rgp_update_interval: '60s'
+# allowed_staleness: '2m'
+# session_key_ttl_max: '30m'

@@ -1,3 +1,6 @@
+// Copyright (c), Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { SealClient, SessionKey, NoAccessError, EncryptedObject } from '@mysten/seal';
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
@@ -16,7 +19,14 @@ export const downloadAndDecrypt = async (
   setIsDialogOpen: (open: boolean) => void,
   setReloadKey: (updater: (prev: number) => number) => void,
 ) => {
-  const aggregators = ['aggregator1', 'aggregator2', 'aggregator3', 'aggregator4', 'aggregator5', 'aggregator6'];
+  const aggregators = [
+    'aggregator1',
+    'aggregator2',
+    'aggregator3',
+    'aggregator4',
+    'aggregator5',
+    'aggregator6',
+  ];
   // First, download all files in parallel (ignore errors)
   const downloadResults = await Promise.all(
     blobIds.map(async (blobId) => {
