@@ -3,6 +3,7 @@
 - [Introduction](README.md)
 - [Seal Design](Design.md)
 - [Using Seal](UsingSeal.md)
+- [Pricing](Pricing.md)
 - [Seal Beta Terms of Service](TermsOfService.md)
 
 # Security best practices and risk mitigations
@@ -38,6 +39,15 @@ In this approach:
 * Use Seal to encrypt and manage access to that key.
 
 This setup gives you the ability to **rotate or update** the Seal key servers in your threshold configuration, without needing to re-encrypt the data itself. You only need to re-encrypt the small, symmetric key. This is particularly useful for data that must remain accessible for years, or that is stored immutably on systems like Walrus.
+
+## Use the symmetric key from the `encrypt` API with care
+
+The Seal SDK’s `encrypt` API returns a symmetric key used to encrypt your data. If you decide to keep this key - for example, to support disaster recovery - store it securely and follow strict security practices. Alternatively, you may return the key to the user instead of storing it yourself. In that case, the user must take responsibility for securely managing the key to prevent any leaks.
+
+Anyone who retains this key is responsible for keeping it secure. If the key is leaked, unauthorized parties may gain access to the encrypted data.
+
+> [!NOTE] 
+> This symmetric key is distinct from the one used in the layered encryption pattern.
 
 ## Understand the risks of leaked decryption keys
 
