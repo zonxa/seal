@@ -20,6 +20,9 @@
     - mysten-testnet-1: https://seal-key-server-testnet-1.mystenlabs.com
     - mysten-testnet-2: https://seal-key-server-testnet-2.mystenlabs.com
 
+> [!NOTE]
+> Testnet key servers are provided for developer testing only and do not come with availability guarantees, SLAs, or assurances regarding long-term key persistence. Please avoid using them to encrypt data you expect to access reliably in the future.
+
 ### Mainnet
 
 Coming soon
