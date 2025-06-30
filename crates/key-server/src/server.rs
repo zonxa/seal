@@ -3,13 +3,14 @@
 use crate::errors::InternalError::{
     DeprecatedSDKVersion, InvalidSDKVersion, MissingRequiredHeader,
 };
-use crate::externals::{
-    current_epoch_time, duration_since, get_reference_gas_price, safe_duration_since,
-};
+use crate::externals::get_reference_gas_price;
 use crate::metrics::{call_with_duration, observation_callback, status_callback, Metrics};
 use crate::mvr::mvr_forward_resolution;
 use crate::periodic_updater::spawn_periodic_updater;
 use crate::signed_message::{signed_message, signed_request};
+use crate::time::checked_duration_since;
+use crate::time::from_mins;
+use crate::time::{duration_since_as_f64, saturating_duration_since};
 use crate::types::{MasterKeyPOP, Network};
 use anyhow::{Context, Result};
 use axum::extract::{Query, Request};
@@ -77,6 +78,7 @@ mod mvr;
 mod periodic_updater;
 #[cfg(test)]
 pub mod tests;
+mod time;
 
 const GAS_BUDGET: u64 = 500_000_000;
 const GIT_VERSION: &str = utils::git_version!();
@@ -184,17 +186,33 @@ impl Server {
         package_name: String,
         req_id: Option<&str>,
     ) -> Result<(), InternalError> {
-        // Check certificate.
-        if utils::from_mins(cert.ttl_min) > self.options.session_key_ttl_max
-            || cert.creation_time > current_epoch_time()
-            || current_epoch_time() < 60_000 * (cert.ttl_min as u64) // checks for overflow
-            || current_epoch_time() - 60_000 * (cert.ttl_min as u64) > cert.creation_time
-        {
+        // Check certificate
+
+        // TTL of the session key must be smaller than the allowed max
+        let ttl = from_mins(cert.ttl_min);
+        if ttl > self.options.session_key_ttl_max {
             debug!(
-                "Certificate has invalid expiration time (req_id: {:?})",
+                "Certificate has invalid time-to-live (req_id: {:?})",
                 req_id
             );
             return Err(InternalError::InvalidCertificate);
+        }
+
+        // Check that the creation time is not in the future and that the certificate has not expired
+        match checked_duration_since(cert.creation_time) {
+            None => {
+                debug!(
+                    "Certificate has invalid creation time (req_id: {:?})",
+                    req_id
+                );
+                return Err(InternalError::InvalidCertificate);
+            }
+            Some(duration) => {
+                if duration > ttl {
+                    debug!("Certificate has expired (req_id: {:?})", req_id);
+                    return Err(InternalError::InvalidCertificate);
+                }
+            }
         }
 
         let msg = signed_message(
@@ -390,7 +408,7 @@ impl Server {
             "latest checkpoint timestamp",
             metrics.map(|m| {
                 observation_callback(&m.checkpoint_timestamp_delay, |ts| {
-                    duration_since(ts) as f64
+                    duration_since_as_f64(ts)
                 })
             }),
             metrics.map(|m| {
@@ -525,7 +543,8 @@ struct MyState {
 impl MyState {
     fn check_full_node_is_fresh(&self) -> Result<(), InternalError> {
         // Compute the staleness of the latest checkpoint timestamp.
-        let staleness = safe_duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
+        let staleness =
+            saturating_duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
         if staleness > self.server.options.allowed_staleness {
             warn!(
                 "Full node is stale. Latest checkpoint is {} ms old.",
