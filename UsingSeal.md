@@ -182,13 +182,8 @@ On-chain decryption in Move is supported using derived keys. For an example, see
 > [!TIP]
 > If a key server request fails with an `InvalidParameter` error, the cause may be a recently created on-chain object in the PTB input. The key server's full node may not have indexed it yet. Wait a few seconds and retry the request, as subsequent attempts should succeed once the node is in sync.
 
-**Mysten Labs Key Servers**
-
-Mysten Labs maintains a set of key servers for the Seal project:
-- mysten-testnet-1: https://seal-key-server-testnet-1.mystenlabs.com
-- mysten-testnet-2: https://seal-key-server-testnet-2.mystenlabs.com
-
-Currently, access to above key servers is permissive. However, rate limiting is planned for the future, with a target of 4–5 requests per second per user.
+> [!IMPORTANT]
+> Refer to the [verified key servers](Pricing.md#verified-key-servers) for a list of available key servers in different environments.
 
 ## For key server operators
 
