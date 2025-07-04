@@ -18,7 +18,7 @@ use axum::http::{HeaderMap, HeaderValue};
 use axum::middleware::{from_fn_with_state, map_response, Next};
 use axum::response::Response;
 use axum::routing::{get, post};
-use axum::{extract::State, Json};
+use axum::{extract::State, Json, Router};
 use core::time::Duration;
 use crypto::elgamal::encrypt;
 use crypto::ibe;
@@ -694,6 +694,21 @@ async fn start_server_background_tasks(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let (monitor_handle, app) = app().await?;
+
+    tokio::select! {
+        server_result = serve(app) => {
+            error!("Server stopped with status {:?}", server_result);
+            std::process::exit(1);
+        }
+        monitor_result = monitor_handle => {
+            error!("Background tasks stopped with error: {:?}", monitor_result);
+            std::process::exit(1);
+        }
+    }
+}
+
+pub(crate) async fn app() -> Result<(JoinHandle<Result<()>>, Router)> {
     let _guard = mysten_service::logging::init();
 
     // If CONFIG_PATH is set, read the configuration from the file.
@@ -780,15 +795,5 @@ async fn main() -> Result<()> {
                 .with_state(state),
         )
         .layer(cors);
-
-    tokio::select! {
-        server_result = serve(app) => {
-            error!("Server stopped with status {:?}", server_result);
-            std::process::exit(1);
-        }
-        monitor_result = monitor_handle => {
-            error!("Background tasks stopped with error: {:?}", monitor_result);
-            std::process::exit(1);
-        }
-    }
+    Ok((monitor_handle, app))
 }
