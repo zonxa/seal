@@ -24,11 +24,7 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
 - Mysten Labs: The following key servers are configured using the `Open` mode and freely available for experimentation, development, and testing. A source-based rate limit is configured which can not be changed for any client.
     - mysten-testnet-1: https://seal-key-server-testnet-1.mystenlabs.com
     - mysten-testnet-2: https://seal-key-server-testnet-2.mystenlabs.com
-- [Tusky](https://tusky.io/):
-    - `Permissioned` mode
-        - URL: https://dev-key-server-private.tusky.io
-        - Contact the provider to configure your client and generate a unique key server object id
-- [Ruby Nodes](https://rubynodes.io/):
+- [Ruby Nodes](https://seal.rubynodes.io):
     - `Open` mode
         - URL: https://free-eu-central-1.api.rubynodes.io 
         - Object Id: `0x781389fae54633649d78b731b708c5b363cf7fa4753a48997d4f6f82d5cc5b98`
@@ -42,9 +38,19 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
     - `Permissioned` mode
         - URL: https://seal-testnet.nodeinfra.com
         - Contact the provider to configure your client and generate a unique key server object id
+- Studio Mirai:
+    - `Open` mode
+        - URL: https://public.key-server.testnet.seal.mirai.cloud
+        - Object Id: `0x27cf65cfd514e9fad1211c2f6e164b59c000be43466088faeb4a65952b6bfb99`
+    - `Permissioned` mode
+        - URL: https://private.key-server.testnet.seal.mirai.cloud
+        - Contact the provider to configure your client and generate a unique key server object id
 
 > [!NOTE]
 > Testnet key servers are provided for developer testing only and do not come with availability guarantees, SLAs, or assurances regarding long-term key persistence. Please avoid using them to encrypt data you expect to access reliably in the future.
+
+> [!NOTE]
+> The `URL` for any listed key server may change over time. What matters is the `Object Id`, which points to the onchain key server object. That object always holds the latest `URL` as the source of truth.
 
 ### Mainnet
 
