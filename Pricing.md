@@ -49,6 +49,9 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
 > [!NOTE]
 > Testnet key servers are provided for developer testing only and do not come with availability guarantees, SLAs, or assurances regarding long-term key persistence. Please avoid using them to encrypt data you expect to access reliably in the future.
 
+> [!NOTE]
+> The `URL` for any listed key server may change over time. What matters is the `Object Id`, which points to the onchain key server object. That object always holds the latest `URL` as the source of truth.
+
 ### Mainnet
 
 Coming soon
