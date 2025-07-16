@@ -411,15 +411,18 @@ docker run -p 2024:2024 \
 
 ### Infrastructure requirements
 
-The key server is a lightweight, stateless service that does not require persistent storage. Its stateless design supports horizontal scalability. The service must have access to a trusted full node, ideally one located nearby to reduce latency.
+The Seal key server is a lightweight, stateless service designed for easy horizontal scaling. Because it doesn’t require persistent storage, you can run multiple instances behind a load balancer to increase availability and resilience. Each instance must have access to a trusted [Sui Full node](https://docs.sui.io/guides/operator/sui-full-node) — ideally one that’s geographically close to reduce latency during policy checks and key operations.
 
-The key server is initialized with a short key, which must be securely stored and accessible only to the service. You may use a cloud-based key management system (KMS), or a self-managed software or hardware vault. Any imported keys should also be securely stored in a similar manner.
+The server is initialized with a master key (or seed), which must be kept secure. You can store this key using a cloud-based Key Management System (KMS), or in a self-managed software or hardware vault. If you’re importing keys, those should be protected using the same secure storage approach.
 
-To protect the service against denial-of-service (DoS) attacks, implement standard mitigations such as rate limiting at the API gateway layer.
+To operate the key server securely, it's recommended to place it behind an API gateway or reverse proxy. This allows you to:
 
-The key server exposes a set of metrics via a Prometheus server running on port 9184. Those metrics can be viewed in raw form by calling `curl http://0.0.0.0:9184` or used in a data visualization and analytics tool like Grafana.
+- Expose the service over HTTPS and terminate SSL/TLS at the edge
+- Enforce rate limiting and prevent abuse
+- Authenticate requests using API keys or access tokens
+- Optionally integrate usage tracking for commercial or billable offerings, such as logging access frequency per client or package
 
-Similarly, the key server exposes a health check endpoint that can be called using `curl http://0.0.0.0:2024/health`.
+For observability, the server exposes Prometheus-compatible metrics on port `9184`. You can access raw metrics by running `curl http://0.0.0.0:9184`. These metrics can also be visualized using tools like Grafana. The key server also includes a basic health check endpoint on port `2024`: `curl http://0.0.0.0:2024/health`.
 
 ## The CLI
 
