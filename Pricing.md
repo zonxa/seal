@@ -38,12 +38,26 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
     - `Permissioned` mode
         - URL: https://seal-testnet.nodeinfra.com
         - Contact the provider to configure your client and generate a unique key server object id
-- Studio Mirai:
+- [Studio Mirai](https://x.com/_StudioMirai):
     - `Open` mode
         - URL: https://public.key-server.testnet.seal.mirai.cloud
         - Object Id: `0x27cf65cfd514e9fad1211c2f6e164b59c000be43466088faeb4a65952b6bfb99`
     - `Permissioned` mode
         - URL: https://private.key-server.testnet.seal.mirai.cloud
+        - Contact the provider to configure your client and generate a unique key server object id
+- [Overclock](https://x.com/OverclockSui):
+    - `Open` mode
+        - URL: https://seal-testnet-open.overclock.run
+        - Object Id: `0x9c949e53c36ab7a9c484ed9e8b43267a77d4b8d70e79aa6b39042e3d4c434105`
+    - `Permissioned` mode
+        - URL: https://seal-testnet-permissioned.overclock.run
+        - Contact the provider to configure your client and generate a unique key server object id
+- [H2O Nodes](https://www.h2o-nodes.com/)
+    - `Open` mode
+        - URL: https://seal-open.sui-testnet.h2o-nodes.com
+        - Object Id: `0x39cef09b24b667bc6ed54f7159d82352fe2d5dd97ca9a5beaa1d21aa774f25a2`
+    - `Permissioned` mode
+        - URL: https://seal-permissioned.sui-testnet.h2o-nodes.com
         - Contact the provider to configure your client and generate a unique key server object id
 
 > [!NOTE]
