@@ -9,6 +9,9 @@
 
 # Developer FAQs
 
+> [!TIP]
+> Refer to the [Security Best Practices and Risk Mitigations](SecurityBestPractices.md) as well.
+
 ## How do I define and deploy a Seal access policy in Move?
 
 You define one or more `seal_approve*` entry functions in your Move module. Start the function with an argument that represents the requesting identity (such as `id: vector<u8>`). You can define multiple such functions with different logic and inputs. Follow the versioning best practices using shared objects. Refet to [Move patterns](./move/patterns/) to get started.
