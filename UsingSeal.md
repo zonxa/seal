@@ -2,6 +2,7 @@
 
 - [Introduction](README.md)
 - [Seal Design](Design.md)
+- [Developer FAQs](DevFAQ.md)
 - [Security Best Practices and Risk Mitigations](SecurityBestPractices.md)
 - [Pricing](Pricing.md)
 - [Seal Beta Terms of Service](TermsOfService.md)

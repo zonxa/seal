@@ -3,6 +3,7 @@
 - [Introduction](README.md)
 - [Seal Design](Design.md)
 - [Using Seal](UsingSeal.md)
+- [Developer FAQs](DevFAQ.md)
 - [Security Best Practices and Risk Mitigations](SecurityBestPractices.md)
 - [Pricing](Pricing.md)
 
