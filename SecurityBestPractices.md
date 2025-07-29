@@ -3,7 +3,6 @@
 - [Introduction](README.md)
 - [Seal Design](Design.md)
 - [Using Seal](UsingSeal.md)
-- [Developer FAQs](DevFAQ.md)
 - [Pricing](Pricing.md)
 - [Seal Beta Terms of Service](TermsOfService.md)
 
