@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::errors::InternalError;
+use crate::metrics_push::MetricsPushConfig;
 use crate::time::from_mins;
 use crate::types::Network;
 use anyhow::{anyhow, Result};
@@ -144,6 +145,10 @@ pub struct KeyServerOptions {
     /// The configuration for the Sui RPC client.
     #[serde(default)]
     pub rpc_config: RpcConfig,
+
+    /// Optional configuration for pushing metrics to an external endpoint (e.g., seal-proxy).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics_push_config: Option<MetricsPushConfig>,
 }
 
 impl KeyServerOptions {
@@ -165,6 +170,7 @@ impl KeyServerOptions {
             allowed_staleness: default_allowed_staleness(),
             session_key_ttl_max: default_session_key_ttl_max(),
             rpc_config: RpcConfig::default(),
+            metrics_push_config: None,
         }
     }
 
@@ -183,6 +189,7 @@ impl KeyServerOptions {
             allowed_staleness: default_allowed_staleness(),
             session_key_ttl_max: default_session_key_ttl_max(),
             rpc_config: RpcConfig::default(),
+            metrics_push_config: None,
         }
     }
 

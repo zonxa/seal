@@ -5,6 +5,7 @@ use crate::errors::InternalError::{
 };
 use crate::externals::get_reference_gas_price;
 use crate::metrics::{call_with_duration, observation_callback, status_callback, Metrics};
+use crate::metrics_push::create_push_client;
 use crate::mvr::mvr_forward_resolution;
 use crate::periodic_updater::spawn_periodic_updater;
 use crate::signed_message::{signed_message, signed_request};
@@ -28,6 +29,7 @@ use errors::InternalError;
 use externals::get_latest_checkpoint_timestamp;
 use fastcrypto::ed25519::{Ed25519PublicKey, Ed25519Signature};
 use fastcrypto::traits::VerifyingKey;
+use futures::future::pending;
 use jsonrpsee::core::ClientError;
 use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
 use key_server_options::KeyServerOptions;
@@ -74,6 +76,7 @@ mod valid_ptb;
 mod key_server_options;
 mod master_keys;
 mod metrics;
+mod metrics_push;
 mod mvr;
 mod periodic_updater;
 #[cfg(test)]
@@ -438,6 +441,38 @@ impl Server {
         )
         .await
     }
+
+    /// Spawn a metrics push background jobs that push metrics to seal-proxy
+    fn spawn_metrics_push_job(&self, registry: prometheus::Registry) -> JoinHandle<()> {
+        let push_config = self.options.metrics_push_config.clone();
+        if let Some(push_config) = push_config {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(push_config.push_interval);
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                let mut client = create_push_client();
+                tracing::info!("starting metrics push to '{}'", &push_config.push_url);
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            if let Err(error) = metrics_push::push_metrics(
+                                push_config.clone(),
+                                &client,
+                                &registry,
+                            ).await {
+                                tracing::warn!(?error, "unable to push metrics");
+                                client = create_push_client();
+                            }
+                        }
+                    }
+                }
+            })
+        } else {
+            tokio::spawn(async move {
+                warn!("No metrics push config is found");
+                pending().await
+            })
+        }
+    }
 }
 
 async fn handle_fetch_key_internal(
@@ -639,11 +674,13 @@ fn uptime_metric(version: &str) -> Box<dyn prometheus::core::Collector> {
 /// Spawn server's background tasks:
 ///  - background checkpoint downloader
 ///  - reference gas price updater.
+///  - optional metrics pusher (if configured).
 ///
 /// The returned JoinHandle can be used to catch any tasks error or panic.
 async fn start_server_background_tasks(
     server: Arc<Server>,
     metrics: Arc<Metrics>,
+    registry: prometheus::Registry,
 ) -> (
     Receiver<Timestamp>,
     Receiver<u64>,
@@ -659,7 +696,10 @@ async fn start_server_background_tasks(
         .spawn_reference_gas_price_updater(Some(&metrics))
         .await;
 
-    // Spawn a monitor task that will exit the program if either updater task panics
+    // Spawn metrics push task
+    let metrics_push_handle = server.spawn_metrics_push_job(registry);
+
+    // Spawn a monitor task that will exit the program if any updater task panics
     let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
         tokio::select! {
             result = latest_checkpoint_timestamp_handle => {
@@ -674,6 +714,15 @@ async fn start_server_background_tasks(
             result = reference_gas_price_handle => {
                 if let Err(e) = result {
                     error!("Reference gas price updater panicked: {:?}", e);
+                    if e.is_panic() {
+                        std::panic::resume_unwind(e.into_panic());
+                    }
+                    return Err(e.into());
+                }
+            }
+            result = metrics_push_handle => {
+                if let Err(e) = result {
+                    error!("Metrics push task panicked: {:?}", e);
                     if e.is_panic() {
                         std::panic::resume_unwind(e.into_panic());
                     }
@@ -764,7 +813,7 @@ pub(crate) async fn app() -> Result<(JoinHandle<Result<()>>, Router)> {
     let server = Arc::new(Server::new(options, Some(metrics.clone())).await);
 
     let (latest_checkpoint_timestamp_receiver, reference_gas_price_receiver, monitor_handle) =
-        start_server_background_tasks(server.clone(), metrics.clone()).await;
+        start_server_background_tasks(server.clone(), metrics.clone(), registry.clone()).await;
 
     let state = MyState {
         metrics,
