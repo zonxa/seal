@@ -8,7 +8,6 @@ use crate::metrics::{call_with_duration, observation_callback, status_callback, 
 use crate::metrics_push::create_push_client;
 use crate::mvr::mvr_forward_resolution;
 use crate::periodic_updater::spawn_periodic_updater;
-use crate::signed_message::{signed_message, signed_request};
 use crate::time::checked_duration_since;
 use crate::time::from_mins;
 use crate::time::{duration_since_as_f64, saturating_duration_since};
@@ -27,11 +26,13 @@ use crypto::ibe::create_proof_of_possession;
 use crypto::prefixed_hex::PrefixedHex;
 use errors::InternalError;
 use externals::get_latest_checkpoint_timestamp;
-use fastcrypto::ed25519::{Ed25519PublicKey, Ed25519Signature};
+use fastcrypto::ed25519::Ed25519Signature;
 use fastcrypto::traits::VerifyingKey;
 use futures::future::pending;
 use jsonrpsee::core::ClientError;
 use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
+use key_server::types::{Certificate, DecryptionKey, FetchKeyRequest, FetchKeyResponse, KeyId};
+use key_server::{signed_message, signed_request};
 use key_server_options::KeyServerOptions;
 use master_keys::MasterKeys;
 use metrics::metrics_middleware;
@@ -52,7 +53,6 @@ use sui_rpc_client::SuiRpcClient;
 use sui_sdk::error::Error;
 use sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI;
 use sui_sdk::types::base_types::{ObjectID, SuiAddress};
-use sui_sdk::types::signature::GenericSignature;
 use sui_sdk::types::transaction::{ProgrammableTransaction, TransactionKind};
 use sui_sdk::verify_personal_message_signature::verify_personal_message_signature;
 use sui_sdk::SuiClientBuilder;
@@ -61,13 +61,12 @@ use tokio::sync::watch::Receiver;
 use tokio::task::JoinHandle;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
-use types::{ElGamalPublicKey, ElgamalEncryption, ElgamalVerificationKey};
+use types::{ElGamalPublicKey, ElgamalVerificationKey};
 use valid_ptb::ValidPtb;
 
 mod cache;
 mod errors;
 mod externals;
-mod signed_message;
 mod sui_rpc_client;
 mod types;
 mod utils;
@@ -89,48 +88,8 @@ const GIT_VERSION: &str = utils::git_version!();
 /// Default encoding used for master and public keys for the key server.
 type DefaultEncoding = PrefixedHex;
 
-// The "session" certificate, signed by the user
-#[derive(Clone, Serialize, Deserialize, Debug)]
-struct Certificate {
-    pub user: SuiAddress,
-    pub session_vk: Ed25519PublicKey,
-    pub creation_time: u64,
-    pub ttl_min: u16,
-    pub signature: GenericSignature,
-    pub mvr_name: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct FetchKeyRequest {
-    // Next fields must be signed to prevent others from sending requests on behalf of the user and
-    // being able to fetch the key
-    ptb: String, // must adhere specific structure, see ValidPtb
-    // We don't want to rely on https only for restricting the response to this user, since in the
-    // case of multiple services, one service can do a replay attack to get the key from other
-    // services.
-    enc_key: ElGamalPublicKey,
-    enc_verification_key: ElgamalVerificationKey,
-    request_signature: Ed25519Signature,
-
-    certificate: Certificate,
-}
-
-type KeyId = Vec<u8>;
-
 /// UNIX timestamp in milliseconds.
 type Timestamp = u64;
-
-#[derive(Serialize, Deserialize)]
-struct DecryptionKey {
-    id: KeyId,
-    encrypted_key: ElgamalEncryption,
-}
-
-#[derive(Serialize, Deserialize)]
-struct FetchKeyResponse {
-    decryption_keys: Vec<DecryptionKey>,
-}
-
 #[derive(Clone)]
 struct Server {
     sui_rpc_client: SuiRpcClient,
