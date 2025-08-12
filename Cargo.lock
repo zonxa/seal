@@ -4156,6 +4156,7 @@ dependencies = [
  "prometheus-closure-metric",
  "rand 0.8.5",
  "reqwest",
+ "seal-sdk",
  "semver",
  "serde",
  "serde_json",
@@ -7489,6 +7490,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "seal-sdk"
+version = "0.4.7"
+dependencies = [
+ "bcs",
+ "chrono",
+ "crypto",
+ "fastcrypto 0.1.8",
+ "hex",
+ "rand 0.8.5",
+ "serde",
+ "sui-types",
+ "tracing",
 ]
 
 [[package]]

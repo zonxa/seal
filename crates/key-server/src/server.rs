@@ -31,8 +31,6 @@ use fastcrypto::traits::VerifyingKey;
 use futures::future::pending;
 use jsonrpsee::core::ClientError;
 use jsonrpsee::types::error::{INVALID_PARAMS_CODE, METHOD_NOT_FOUND_CODE};
-use key_server::types::{Certificate, DecryptionKey, FetchKeyRequest, FetchKeyResponse, KeyId};
-use key_server::{signed_message, signed_request};
 use key_server_options::KeyServerOptions;
 use master_keys::MasterKeys;
 use metrics::metrics_middleware;
@@ -42,6 +40,10 @@ use mysten_service::package_name;
 use mysten_service::package_version;
 use mysten_service::serve;
 use rand::thread_rng;
+use seal_sdk::{
+    signed_message, signed_request, Certificate, DecryptionKey, FetchKeyRequest, FetchKeyResponse,
+    KeyId,
+};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

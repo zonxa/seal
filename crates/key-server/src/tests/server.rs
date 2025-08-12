@@ -1,7 +1,8 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use key_server::{signed_message, signed_request};
+use crate::signed_message;
+use crate::signed_request;
 use prometheus::Registry;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
