@@ -281,22 +281,27 @@ impl Server {
                 None,
             )
             .await;
-        let dry_run_res = self.sui_rpc_client
-                .dry_run_transaction_block(tx_data.clone())
-                .await
+        let dry_run_res = self
+            .sui_rpc_client
+            .dry_run_transaction_block(tx_data.clone())
+            .await
             .map_err(|e| {
                 if let Error::RpcError(ClientError::Call(ref e)) = e {
                     match e.code() {
                         INVALID_PARAMS_CODE => {
-                            // A dry run will fail if called with a newly created object parameter that the FN has not yet seen.
-                            // In that case, the user gets a FORBIDDEN status response.
-                            debug!("Invalid parameter: This could be because the FN has not yet seen the object.");
-                            return InternalError::InvalidParameter;
+                            // This error is generic and happens when one of the parameters of the Move call in the PTB is invalid.
+                            // One reason is that one of the parameters does not exist, in which case it could be a newly created object that the FN has not yet seen.
+                            // There are other possible reasons, so we return the entire message to the user to allow debugging.
+                            // Note that the message is a message from the JSON RPC API, so it is already formatted and does not contain any sensitive information.
+                            debug!("Invalid parameter: {}", e.message());
+                            return InternalError::InvalidParameter(e.message().to_string());
                         }
                         METHOD_NOT_FOUND_CODE => {
                             // This means that the seal_approve function is not found on the given module.
                             debug!("Function not found: {:?}", e);
-                            return InternalError::InvalidPTB("The seal_approve function was not found on the module".to_string());
+                            return InternalError::InvalidPTB(
+                                "The seal_approve function was not found on the module".to_string(),
+                            );
                         }
                         _ => {}
                     }
