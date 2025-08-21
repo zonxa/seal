@@ -65,7 +65,7 @@ First, the app must select the set of key servers it intends to use. Each key se
 A key server may be used multiple times to enable weighting, which allows the app to specify how many times a key server can contribute towards reaching the decryption threshold. This is useful for scenarios where some key servers are more reliable or trusted than others, or when the app wants to ensure that certain key servers are always included in the decryption process.
 
 !!! info
-    Anyone can create an onchain `KeyServer` object that references a known URL (such as `seal.mystenlabs.com`) but uses a different public key. To prevent impersonation, the SDK performs a verification step: it fetches the object ID from the server’s `/v1/service` endpoint and compares it with the object ID registered onchain.
+    Anyone can create an onchain `KeyServer` object that references a known URL (such as `seal.mystenlabs.com`) but uses a different public key. To prevent impersonation, the SDK may perform a verification step: it fetches the object ID from the server’s `/v1/service` endpoint and compares it with the object ID registered onchain.
 
 Apps can define a list of Seal key server object IDs from the [verified key servers](Pricing.md#verified-key-servers) available in each environment. You can use any `Open` mode key servers directly. For `Permissioned` mode servers, contact the key server operator to register your package ID and receive the corresponding object ID.
 
@@ -185,19 +185,31 @@ await client.fetchKeys({
 });
 ```
 
+Check out our [integration tests](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/test/unit/integration.test.ts)  for a full end-to-end example. You can also explore the [example app](./examples/) to see how to implement allowlist and NFT-gated content access in practice.
+
 !!! tip
     If a key server request fails with an `InvalidParameter` error, the cause may be a recently created on-chain object in the PTB input. The key server's full node may not have indexed it yet. Wait a few seconds and retry the request, as subsequent attempts should succeed once the node is in sync.
 
 #### On-chain decryption
-On-chain decryption in Move is supported, and can be done using the [`seal::bf_mac_encryption`](./move/seal/sources/bf_hmac_encryption.move) package. This allows Move packages to decrypt Seal encryptions and use the decrypted values to allow use cases such as on-chain auctions, secure voting (see [voting.move](./move/patterns/sources/voting.move)), etc.
 
-To decrypt an encrypted object in a Move package you should follow these steps:
-1. **Verify derived keys:** Use `bf_hmac_encryption::verify_derived_keys` to verify each derived key. This function takes the raw keys, package ID, identity and the vector of public keys for each key server, and returns a vector of VerifiedDerivedKey objects. Note that the derived keys can be fetched through the Seal SDK client using the `client.getDerivedKeys` function which returns a map from key server object IDs to the derived keys, and the public keys can be also retrieved using the SDK by calling the `client.getPublicKeys` function and passing them to the `bf_hmac_encryption::new_public_key`. For both derived keys and public keys, you likely need to convert from bytes to `Element<G1>` and `Element<G2>` respectively using the [[`from_bytes`]](https://docs.sui.io/references/framework/sui/group_ops#sui_group_ops_from_bytes) function.  
-2. **Perform decryption:** Call `bf_hmac_encryption::decrypt` with the encrypted object, the verified derived keys and the vector of public keys. The return value is an `Option<vector<u8>>`, and if the decryption fails, it will return a `None` value.
+Seal supports on-chain decryption in Move through the [`seal::bf_mac_encryption`](https://github.com/MystenLabs/seal/tree/main/move/seal/sources/bf_hmac_encryption.move) package. This enables Move packages to decrypt Seal-encrypted objects and use the results in on-chain logic such as auctions, secure voting (see [voting.move](https://github.com/MystenLabs/seal/tree/main/move/patterns/sources/voting.move)), or other verifiable workflows.
 
-Note that the on-chain decryption only works for HMAC‑CTR mode and _not_ for AES.
+To decrypt an encrypted object in a Move package, follow these steps:
 
-The published package can be found at following: 
+- **Verify derived keys**
+    - Call `bf_hmac_encryption::verify_derived_keys` with the raw keys, package ID, identity, and the vector of key server public keys.
+    - The function returns a vector of `VerifiedDerivedKey` objects.
+    -  Use the Seal SDK client to fetch derived keys via `client.getDerivedKeys`, which returns a map of key server object IDs to their derived keys.
+    - Retrieve public keys with `client.getPublicKeys` and convert them with `bf_hmac_encryption::new_public_key`.
+    - For both derived keys and public keys, you may need to convert from bytes to `Element<G1>` or `Element<G2>` using the [`from_bytes`](https://docs.sui.io/references/framework/sui/group_ops#sui_group_ops_from_bytes) function.
+- **Perform decryption**
+    - Call `bf_hmac_encryption::decrypt` with the encrypted object, the verified derived keys, and the vector of public keys
+    - The function returns an `Option<vector<u8>>`. If decryption fails, the return value will be `None`.
+
+!!! note
+    On-chain decryption currently works only with HMAC-CTR mode, _not_ AES.
+
+The published package IDs are:
 
 | <NETWORK> | <PACKAGE_ID> |
 | -------- | ------- |
@@ -271,7 +283,7 @@ In the config file, make sure to:
 $ CONFIG_PATH=crates/key-server/key-server-config.yaml MASTER_KEY=<MASTER_KEY> cargo run --bin key-server
 
 # Or with a custom RPC endpoint via environment variable:
-$ NODE_URL=https://your-custom-rpc.example.com CONFIG_PATH=crates/key-server/key-server-config.yaml MASTER_KEY=<MASTER_KEY> cargo run --bin key-server
+# $ NODE_URL=https://your-custom-rpc.example.com CONFIG_PATH=crates/key-server/key-server-config.yaml MASTER_KEY=<MASTER_KEY> cargo run --bin key-server
 ```
 
 Alternatively, run with docker:
