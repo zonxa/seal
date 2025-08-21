@@ -30,7 +30,7 @@ public struct Vote has key {
     /// This will be set after the vote is finalised. The vote options are represented by a Option<u8> which is None if the vote was invalid.
     result: Option<vector<Option<u8>>>,
     /// The key servers that must be used for the encryption of the votes.
-    key_servers: vector<ID>,
+    key_servers: vector<address>,
     /// The threshold for the vote.
     threshold: u8,
 }
@@ -50,7 +50,7 @@ public fun destroy_for_testing(v: Vote) {
 /// The associated key-ids are [pkg id][vote id].
 public fun create_vote(
     voters: vector<address>,
-    key_servers: vector<ID>,
+    key_servers: vector<address>,
     threshold: u8,
     ctx: &mut TxContext,
 ): Vote {
@@ -73,7 +73,7 @@ public fun cast_vote(vote: &mut Vote, encrypted_vote: EncryptedObject, ctx: &mut
 
     // All encrypted vote must have been encrypted using the same key servers and the same threshold.
     // We could allow the order of the key servers to be different, but for the sake of simplicity, we also require the same order.
-    assert!(encrypted_vote.services() == vote.key_servers.map_ref!(|id| id.to_address()));
+    assert!(encrypted_vote.services() == vote.key_servers);
     assert!(encrypted_vote.threshold() == vote.threshold);
 
     // This aborts if the sender is not a voter.
@@ -117,8 +117,7 @@ public fun finalize_vote(
 #[test]
 fun test_vote() {
     use seal::bf_hmac_encryption::{verify_derived_keys, get_public_key};
-    use seal::key_server::{create_v1, destroy_cap, KeyServer};
-    use std::string;
+    use seal::key_server::{create_and_transfer_v1, KeyServer, destroy_for_testing as ks_destroy};
     use seal::bf_hmac_encryption::parse_encrypted_object;
     use sui::test_scenario::{Self, next_tx, ctx};
     use sui::bls12381::g1_from_bytes;
@@ -129,50 +128,50 @@ fun test_vote() {
     // Setup key servers.
     let pk0 =
         x"a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161";
-    let cap0 = create_v1(
-        string::utf8(b"mysten0"),
-        string::utf8(b"https://mysten-labs.com"),
+    create_and_transfer_v1(
+        b"mysten0".to_string(),
+        b"https://mysten-labs.com".to_string(),
         0,
         pk0,
-        ctx(&mut scenario),
+        scenario.ctx(),
     );
-    next_tx(&mut scenario, addr1);
-    let s0: KeyServer = test_scenario::take_shared(&scenario);
+    scenario.next_tx(addr1);
+    let s0: KeyServer = scenario.take_from_sender();
 
     let pk1 =
         x"a9ce55cfa7009c3116ea29341151f3c40809b816f4ad29baa4f95c1bb23085ef02a46cf1ae5bd570d99b0c6e9faf525306224609300b09e422ae2722a17d2a969777d53db7b52092e4d12014da84bffb1e845c2510e26b3c259ede9e42603cd6";
-    let cap1 = create_v1(
-        string::utf8(b"mysten1"),
-        string::utf8(b"https://mysten-labs.com"),
+    create_and_transfer_v1(
+        b"mysten1".to_string(),
+        b"https://mysten-labs.com".to_string(),
         0,
         pk1,
-        ctx(&mut scenario),
+        scenario.ctx(),
     );
-    next_tx(&mut scenario, addr1);
-    let s1: KeyServer = test_scenario::take_shared(&scenario);
+    scenario.next_tx(addr1);
+    let s1: KeyServer = scenario.take_from_sender();
 
     let pk2 =
         x"93b3220f4f3a46fb33074b590cda666c0ebc75c7157d2e6492c62b4aebc452c29f581361a836d1abcbe1386268a5685103d12dec04aadccaebfa46d4c92e2f2c0381b52d6f2474490d02280a9e9d8c889a3fce2753055e06033f39af86676651";
-    let cap2 = create_v1(
-        string::utf8(b"mysten2"),
-        string::utf8(b"https://mysten-labs.com"),
+    create_and_transfer_v1(
+        b"mysten2".to_string(),
+        b"https://mysten-labs.com".to_string(),
         0,
         pk2,
-        ctx(&mut scenario),
+        scenario.ctx(),
     );
-    next_tx(&mut scenario, addr1);
-    let s2: KeyServer = test_scenario::take_shared(&scenario);
+    scenario.next_tx(addr1);
+    let s2: KeyServer = scenario.take_from_sender();
 
     // Anyone can create a vote.
     let mut vote = create_vote(
         vector[@0x1, @0x2],
-        vector[s0.id().to_inner(), s1.id().to_inner(), s2.id().to_inner()],
+        vector[s0.id(), s1.id(), s2.id()],
         2,
         scenario.ctx(),
     );
 
     // cargo run --bin seal-cli encrypt-hmac --message 0x07 --aad 0x0000000000000000000000000000000000000000000000000000000000000001 --package-id 0x0 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 2 a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161 a9ce55cfa7009c3116ea29341151f3c40809b816f4ad29baa4f95c1bb23085ef02a46cf1ae5bd570d99b0c6e9faf525306224609300b09e422ae2722a17d2a969777d53db7b52092e4d12014da84bffb1e845c2510e26b3c259ede9e42603cd6 93b3220f4f3a46fb33074b590cda666c0ebc75c7157d2e6492c62b4aebc452c29f581361a836d1abcbe1386268a5685103d12dec04aadccaebfa46d4c92e2f2c0381b52d6f2474490d02280a9e9d8c889a3fce2753055e06033f39af86676651 -- 0x34401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96 0xd726ecf6f7036ee3557cd6c7b93a49b231070e8eecada9cfa157e40e3f02e5d3 0xdba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a97
-    // cargo run --bin seal-cli encrypt-hmac --message 0x2a --aad 0x0000000000000000000000000000000000000000000000000000000000000002 --package-id 0x0 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 2 a6b8194ba6ffa1bf4c4e13ab1e56833f99f45f97874e77b845b361305ddaa741174febc307d3e07f7d4d5bb08c0adf3d11a5b8774c84006fb0ba7435f045f56a61905bc283049c2175984528e40a36e0096aabd401a67b1ccc442416c33b5df9 ac1c15fe6c5476ebc8b5bc432dcea06a30c87f89d21b89159ceab06afb84e0e7edefaadb896771ee281d25b6845aa3a20bda9324de39a9909c00f09b344b053da835dfde943c995576ec5e2fcf93221006bb2fcec8ef5096b4b88c36e1aa861c a8750277f240eb4d94c159b2ec47c1c19396f6e33691fbf50514906b3e70c0454d9a79cf1f1f5562e4ddad9c4505bfb405a9901ac6ba2a51c24919d7599c74a5155f83606f80c1a302de9865deb4577911493dc1608754d67051f755cd44c391 -- 0x34401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96 0xd726ecf6f7036ee3557cd6c7b93a49b231070e8eecada9cfa157e40e3f02e5d3 0xdba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a97
+    // cargo run --bin seal-cli encrypt-hmac --message 0x2a --aad 0x0000000000000000000000000000000000000000000000000000000000000002 --package-id 0x0 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 2 a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161 a9ce55cfa7009c3116ea29341151f3c40809b816f4ad29baa4f95c1bb23085ef02a46cf1ae5bd570d99b0c6e9faf525306224609300b09e422ae2722a17d2a969777d53db7b52092e4d12014da84bffb1e845c2510e26b3c259ede9e42603cd6 93b3220f4f3a46fb33074b590cda666c0ebc75c7157d2e6492c62b4aebc452c29f581361a836d1abcbe1386268a5685103d12dec04aadccaebfa46d4c92e2f2c0381b52d6f2474490d02280a9e9d8c889a3fce2753055e06033f39af86676651 -- 0x34401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96 0xd726ecf6f7036ee3557cd6c7b93a49b231070e8eecada9cfa157e40e3f02e5d3 0xdba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a97
 
     // Cast votes. These have been encrypted using the Seal CLI.
     scenario.next_tx(@0x1);
@@ -221,12 +220,9 @@ fun test_vote() {
     assert!(vote.result.borrow()[1].borrow() == 42);
 
     // Clean up
-    test_scenario::return_shared(s0);
-    test_scenario::return_shared(s1);
-    test_scenario::return_shared(s2);
+    ks_destroy(s0);
+    ks_destroy(s1);
+    ks_destroy(s2);
     destroy_for_testing(vote);
-    destroy_cap(cap0);
-    destroy_cap(cap1);
-    destroy_cap(cap2);
-    test_scenario::end(scenario);
+    scenario.end();
 }

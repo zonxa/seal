@@ -22,12 +22,16 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
 ### Testnet
 
 - Mysten Labs: The following key servers are configured using the `Open` mode and freely available for experimentation, development, and testing. A source-based rate limit is configured which can not be changed for any client.
-    - mysten-testnet-1: https://seal-key-server-testnet-1.mystenlabs.com
-    - mysten-testnet-2: https://seal-key-server-testnet-2.mystenlabs.com
+    - mysten-testnet-1 (`Open` mode)
+        - Object Id: `0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75`
+        - URL: https://seal-key-server-testnet-1.mystenlabs.com
+    - mysten-testnet-2 (`Open` mode)
+        - Object Id: `0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8`
+        - https://seal-key-server-testnet-2.mystenlabs.com
 - [Ruby Nodes](https://seal.rubynodes.io):
     - `Open` mode
-        - URL: https://free-eu-central-1.api.rubynodes.io 
-        - Object Id: `0x781389fae54633649d78b731b708c5b363cf7fa4753a48997d4f6f82d5cc5b98`
+        - URL: https://seal-testnet.api.rubynodes.io
+        - Object Id: `0x6068c0acb197dddbacd4746a9de7f025b2ed5a5b6c1b1ab44dade4426d141da2`
     - `Permissioned` mode
         - URL: https://starter-eu-central-1.api.rubynodes.io
         - Contact the provider to configure your client and generate a unique key server object id
@@ -41,8 +45,8 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
 - [Studio Mirai](https://x.com/_StudioMirai):
 - [Studio Mirai](https://x.com/_StudioMirai):
     - `Open` mode
-        - URL: https://public.key-server.testnet.seal.mirai.cloud
-        - Object Id: `0x27cf65cfd514e9fad1211c2f6e164b59c000be43466088faeb4a65952b6bfb99`
+        - URL: https://open.key-server-testnet.seal.mirai.cloud
+        - Object Id: `0x164ac3d2b3b8694b8181c13f671950004765c23f270321a45fdd04d40cccf0f2`
     - `Permissioned` mode
         - URL: https://private.key-server.testnet.seal.mirai.cloud
         - Contact the provider to configure your client and generate a unique key server object id
