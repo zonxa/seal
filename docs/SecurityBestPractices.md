@@ -38,8 +38,8 @@ The Seal SDK’s `encrypt` API returns a symmetric key used to encrypt your data
 
 Anyone who retains this key is responsible for keeping it secure. If the key is leaked, unauthorized parties may gain access to the encrypted data.
 
-> [!NOTE] 
-> This symmetric key is distinct from the one used in the layered encryption pattern.
+!!!note
+    This symmetric key is distinct from the one used in the layered encryption pattern.
 
 ## Understand the risks of leaked decryption keys
 

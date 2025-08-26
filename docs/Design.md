@@ -5,6 +5,7 @@
 Seal uses a cryptographic primitive called *Identity-Based Encryption (IBE)* to encrypt stored data. This design detail is abstracted away from both developers and users, as Seal does not have visibility into the data it helps secure.
 
 An [IBE scheme](https://en.wikipedia.org/wiki/Identity-based_encryption) consists of the following algorithms:
+
 - `Setup`: Generates a master secret key `msk` and a master public key `mpk`.
 - `Derive(msk, id)`: Given a master secret key and an identity `id` (string or byte array), generates a derived secret key `sk` for that identity.
 - `Encrypt(mpk, id, m)`: Given a public key, an identity and a message, returns an encryption `c`.
@@ -14,6 +15,7 @@ Such a scheme is correct if for any `id` and `m`, `(msk, mpk) ← Setup()` and `
 Note that the domain of identities is *not* fixed, and can be any string/byte array. We use that property below to bound onchain strings to IBE identities.
 
 Seal consists of two main components:
+
 - **Access policies defined on Sui:** A Move package at address `PkgId` controls the subdomain of IBE identities that starts with `[PkgId]` (i.e., all strings of the form `[PkgId]*`). You can think of `[PkgId]` as an identity *namespace*. The package defines, through Move code, who is authorized to access the keys associated with its identity subdomain.
 - **Off-chain Key Servers:** Key servers are off-chain services, each holding a single IBE master secret key. Users can request a derived secret key for a specific identity. The key server returns the derived key only if the associated onchain access policy approves the request.
 
@@ -55,6 +57,7 @@ Keep in mind that if a package is upgradeable, the access control policy can be 
 Seal is designed to reduce centralization using a couple of mechanisms.
 
 First, users can choose any combination of one or more key servers and use their master public keys to encrypt data. This setup supports `t-out-of-n` threshold encryption, which ensures:
+
 - **Privacy** as long as fewer than `t` key servers are compromised
 - **Liveness** as long as at least `t` key servers are available
 
@@ -66,6 +69,7 @@ Seal does not mandate the use of any specific key server. Instead, users can sel
 Secondly, a single key server can also be implemented using a multi-party computation (MPC) committee in a `t-out-of-n` configuration. This committee can consist of Sui validators or any other group of participants. This mechanism is not yet available, but we expect MPC-based key servers to be deployed in the near future. Users can choose to use these in addition to standalone key servers. In this setup, the participants in the MPC committee can change over time, allowing for dynamic membership.
 
 The security of encrypted data relies on the following assumptions:
+
 - **Key server integrity**: The Seal key servers are not compromised, or, in the case of threshold encryption, fewer than the required threshold are compromised. This includes both the Seal key servers and the Sui full nodes they depend on to evaluate the access policies.
 - **Correct access control policy**: The access control policy associated with the encrypted data is accurate and appropriately configured. If package upgrades are enabled, the package owner can modify the policy at any time. The new policy replaces the previous one and governs future access.
 
@@ -73,6 +77,7 @@ The security of encrypted data relies on the following assumptions:
 A light server is initialized with an identity-based encryption (IBE) master secret key and has access to a trusted full node. In simple deployments, the server runs as a backend service with the secret key stored in protected storage, optionally secured using a software or hardware vault. More advanced deployments may use secure enclaves, MPC committees, or even air-gapped environments to enhance security.
 
 The server exposes only two APIs:
+
 - `/v1/service` - Returns information about the service's onchain registered information.
 - `/v1/fetch_key` - Handles a request for one or more derived keys and returns them if access is permitted by the associated package / policies. Each request must meet the following requirements:
     - Be signed by the user's address using `signPersonalMessage`. For details, see the [signed_message](https://github.com/MystenLabs/seal/tree/main/crates/key-server/src/signed_message.rs) format.
