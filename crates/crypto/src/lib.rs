@@ -1,7 +1,9 @@
 // Copyright (c), Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ibe::{decrypt_deterministic, encrypt_batched_deterministic};
+use crate::ibe::{
+    decrypt_deterministic, decrypt_randomness, encrypt_batched_deterministic, verify_nonce,
+};
 use crate::tss::{combine, interpolate, SecretSharing};
 use fastcrypto::error::FastCryptoError::{GeneralError, InvalidInput};
 use fastcrypto::error::FastCryptoResult;
@@ -276,7 +278,7 @@ pub fn seal_decrypt(
             public_keys,
         )?
     } else {
-        combine(&shares)?
+        encrypted_shares.combine_and_verify_nonce(&shares, services, *threshold)?
     };
 
     // Derive symmetric key and decrypt the ciphertext
@@ -341,7 +343,8 @@ fn derive_key(
 
 impl IBEEncryptions {
     /// Given all shares, check that the shares are consistent, e.g., check that all subsets of shares would reconstruct the same polynomial.
-    /// Returns the reconstructed secret which in this case is the base key.
+    /// If there are not enough shares, this will return an error.
+    /// Returns the reconstructed secret, aka the base key.
     fn combine_and_check_share_consistency(
         &self,
         shares: &[(u8, [u8; KEY_SIZE])],
@@ -352,12 +355,16 @@ impl IBEEncryptions {
     ) -> FastCryptoResult<[u8; KEY_SIZE]> {
         // Compute the entire polynomial from the given shares.
         let polynomial = interpolate(shares)?;
-
         let base_key = polynomial(0);
 
         // Decrypt all shares using the derived key
-        let all_shares =
-            self.decrypt_all_shares(full_id, services, public_keys, &base_key, threshold)?;
+        let all_shares = self.decrypt_all_shares_and_verify_nonce(
+            full_id,
+            services,
+            public_keys,
+            &base_key,
+            threshold,
+        )?;
 
         // Check that all shares are points on the reconstructed polynomials
         if all_shares
@@ -369,8 +376,38 @@ impl IBEEncryptions {
         Ok(base_key)
     }
 
-    /// Given the derived key, decrypt all shares
-    fn decrypt_all_shares(
+    /// Given enough shares, combine them to reconstruct the base key.
+    /// If there are not enough shares, this will return an error.
+    /// This also verifies the nonce and returns an error if the nonce is invalid.
+    fn combine_and_verify_nonce(
+        &self,
+        shares: &[(u8, [u8; KEY_SIZE])],
+        services: &[(ObjectID, u8)],
+        threshold: u8,
+    ) -> FastCryptoResult<[u8; KEY_SIZE]> {
+        let base_key = combine(shares)?;
+        match self {
+            IBEEncryptions::BonehFranklinBLS12381 {
+                encrypted_shares,
+                encrypted_randomness,
+                nonce,
+            } => {
+                let randomness_key = derive_key(
+                    KeyPurpose::EncryptedRandomness,
+                    &base_key,
+                    encrypted_shares,
+                    threshold,
+                    &services.iter().map(|(id, _)| *id).collect_vec(),
+                );
+                let randomness = decrypt_randomness(encrypted_randomness, &randomness_key)?;
+                verify_nonce(&randomness, nonce)?;
+            }
+        }
+        Ok(base_key)
+    }
+
+    /// Given the derived key, decrypt all shares and verify the nonce.
+    fn decrypt_all_shares_and_verify_nonce(
         &self,
         full_id: &[u8],
         services: &[(ObjectID, u8)],
@@ -385,7 +422,7 @@ impl IBEEncryptions {
                 nonce,
             } => {
                 // Decrypt encrypted nonce,
-                let randomness = ibe::decrypt_and_verify_nonce(
+                let randomness = decrypt_randomness(
                     encrypted_randomness,
                     &derive_key(
                         KeyPurpose::EncryptedRandomness,
@@ -394,8 +431,10 @@ impl IBEEncryptions {
                         threshold,
                         &services.iter().map(|(id, _)| *id).collect_vec(),
                     ),
-                    nonce,
                 )?;
+
+                // Verify that the nonce is valid
+                verify_nonce(&randomness, nonce)?;
 
                 // Decrypt all shares
                 match public_keys {
