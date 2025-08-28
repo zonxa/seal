@@ -1828,7 +1828,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "0.4.9"
+version = "0.5.9"
 dependencies = [
  "bcs",
  "fastcrypto 0.1.8",
@@ -3316,6 +3316,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77e806677ce663d0a199541030c816847b36e8dc095f70dae4a4f4ad63da5383"
 
 [[package]]
+name = "hostname"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a56f203cd1c76362b69e3863fd987520ac36cf70a8c92627449b2f64a8cf7d65"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
+]
+
+[[package]]
 name = "http"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4130,7 +4141,7 @@ dependencies = [
 
 [[package]]
 name = "key-server"
-version = "0.4.9"
+version = "0.5.9"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -4142,6 +4153,7 @@ dependencies = [
  "futures",
  "git-version",
  "hex",
+ "hostname",
  "http-body-util",
  "hyper-util",
  "jsonrpsee",
@@ -7446,7 +7458,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "seal-cli"
-version = "0.4.9"
+version = "0.5.9"
 dependencies = [
  "bcs",
  "clap",
@@ -7458,7 +7470,7 @@ dependencies = [
 
 [[package]]
 name = "seal-proxy"
-version = "0.4.9"
+version = "0.5.9"
 dependencies = [
  "anyhow",
  "axum 0.8.4",
