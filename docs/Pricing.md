@@ -71,5 +71,13 @@ Please refer to [this document](UsingSeal.md#for-key-server-operators) for detai
 
 ### Mainnet
 
-Coming soon
+Please reach out to these verified key server providers:
+
+- [Ruby Nodes](https://seal.rubynodes.io/pricing)
+- [NodeInfra](https://docs.nodeinfra.com/)
+- [Overclock](https://seal.overclock.run/)
+- [Studio Mirai](https://mirai.cloud/)
+- [H2O Nodes](https://www.h2o-nodes.com/devs)
+- [Enoki by Mysten Labs](https://enoki.mystenlabs.com/)
+    - Sign up for Enoki, create your account, and request Seal key server access using the form in your dashboard.
 

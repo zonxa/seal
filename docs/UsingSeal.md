@@ -210,7 +210,7 @@ To decrypt an encrypted object in a Move package, follow these steps:
 !!! note
     On-chain decryption currently works only with HMAC-CTR mode, _not_ AES.
 
-The published package IDs are:
+The published package IDs for on-chain decryption are:
 
 | <NETWORK> | <PACKAGE_ID> |
 | -------- | ------- |
