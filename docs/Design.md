@@ -10,7 +10,8 @@ An [IBE scheme](https://en.wikipedia.org/wiki/Identity-based_encryption) consist
 - `Derive(msk, id)`: Given a master secret key and an identity `id` (string or byte array), generates a derived secret key `sk` for that identity.
 - `Encrypt(mpk, id, m)`: Given a public key, an identity and a message, returns an encryption `c`.
 - `Decrypt(sk, c)`: Given  a derived secret key and a ciphertext, compute the message `m`.
-Such a scheme is correct if for any `id` and `m`, `(msk, mpk) ← Setup()` and `c ← Encrypt(mpk, id, m)` we have `Decrypt(Derive(msk, id, m), c) = m`.
+
+Such a scheme is correct if for any `id` and `m`, `(msk, mpk) ← Setup()` and `c ← Encrypt(mpk, id, m)` we have `Decrypt(Derive(msk, id), c) = m`.
 
 Note that the domain of identities is *not* fixed, and can be any string/byte array. We use that property below to bound onchain strings to IBE identities.
 
