@@ -3,7 +3,7 @@
 Seal is a decentralized secrets management (DSM) service that relies on access control policies defined and validated on [Sui](https://docs.sui.io/concepts/components). Application developers and users can use Seal to secure sensitive data at rest on decentralized storage like [Walrus](https://docs.wal.app/), or on any other onchain / offchain storage.
 
 !!! info
-    Seal Beta is in Testnet. Refer to the [Seal Beta Terms of Service](TermsOfService.md).
+    Refer to the [Seal Terms of Service](./TermsOfService.md).
 
 ## Features
 
@@ -13,7 +13,7 @@ Seal is a decentralized secrets management (DSM) service that relies on access c
 - **Seamless access:** Applications can interact with Seal key servers using software development kits (SDKs). The [typescript SDK](https://www.npmjs.com/package/@mysten/seal) is available through npm.
 
 !!! note
-    Refer to the [verified key servers](Pricing.md#verified-key-servers) for a list of available key servers in different environments. If you’re interested in operating one, reach out to the Sui Foundation or Mysten Labs team.
+    Refer to the [verified key servers](./Pricing.md#verified-key-servers) for a list of available key servers in different environments. If you’re interested in operating one, reach out to Sui Foundation or the Mysten Labs team.
 
 ## Use cases
 
