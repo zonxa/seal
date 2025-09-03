@@ -17,6 +17,7 @@ To reduce operational risk, you should:
 * Choose key servers operated by organizations or parties that you can trust.
 * Establish a clear business or legal agreement with each provider, if possible.
 * Ensure that terms of service specify obligations around availability, incident response, and service continuity.
+* Confirm the Full node dependency behind the key server - whether it’s self-managed, third-party-managed, or a public-good Full node. Ask for relevant details on redundancy/failover, upgrade cadence, and SLAs. Factor these dependencies into your security and availability assumptions when selecting providers.
 
 Legal agreements can serve as a deterrent to unilateral service disruptions and provide a recourse mechanism if a provider fails to meet expectations.
 

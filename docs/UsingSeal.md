@@ -228,7 +228,7 @@ const publicKey = tx.moveCall({
 Assume you have:
 
 - `encryptedBytes`: a BCS-serialized encrypted object,
-- `txBytes`: a transaction block that calls a `seal_approve*` function (see [Decryption](#Decryption)).
+- `txBytes`: a transaction block that calls a `seal_approve*` function (see [Decryption](#decryption)).
 - `allPublicKeys`: an array of Move objects for all public keys in the encryption,
 - `correspondingPublicKeys`: the public keys that correspond to the derived keys.
 
