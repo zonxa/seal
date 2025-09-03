@@ -20,6 +20,9 @@ To reduce operational risk, you should:
 
 Legal agreements can serve as a deterrent to unilateral service disruptions and provide a recourse mechanism if a provider fails to meet expectations.
 
+!!! tip
+    Confirm the Full node dependency behind the key server - whether it’s self-managed, third-party-managed, or a public-good Full node. Ask for relevant details on redundancy/failover, upgrade cadence, and SLAs. Factor these dependencies into your security and availability assumptions when selecting providers.
+
 ## Use layered encryption for critical or large data
 
 If you're handling data that is highly sensitive, large in size, or difficult to re-encrypt frequently, consider using **envelope encryption**.
