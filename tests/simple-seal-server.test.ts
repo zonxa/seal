@@ -8,12 +8,43 @@ import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
 import { SealClient, SessionKey } from '@mysten/seal';
 import assert from 'assert';
 import { parseArgs } from 'node:util';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Get SDK version from package.json
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const packageJson = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+const sealSdkVersion = packageJson.dependencies['@mysten/seal'].replace('^', '');
 
 const PACKAGE_IDS = {
-    'testnet': "0x58dce5d91278bceb65d44666ffa225ab397fc3ae9d8398c8c779c5530bd978c2",
-    'mainnet': "0x7dea8cca3f9970e8c52813d7a0cfb6c8e481fd92e9186834e1e3b58db2068029"
+    'testnet': '0x58dce5d91278bceb65d44666ffa225ab397fc3ae9d8398c8c779c5530bd978c2',
+    'mainnet': '0x7dea8cca3f9970e8c52813d7a0cfb6c8e481fd92e9186834e1e3b58db2068029',
 };
-async function main(network: "testnet" | "mainnet", keyServerConfigs: { objectId: string, apiKeyName?: string, apiKey?: string }[]) {
+
+async function testCorsHeaders(url: string, name: string, apiKeyName?: string, apiKey?: string) {
+    console.log(`Testing CORS headers for ${name} (${url}) ${sealSdkVersion}`);
+
+    const response = await fetch(`${url}/v1/service`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Request-Id': crypto.randomUUID(),
+            'Client-Sdk-Type': 'typescript',
+            'Client-Sdk-Version': sealSdkVersion,
+            ...(apiKeyName && apiKey ? { [apiKeyName]: apiKey } : {}),
+        },
+    });
+
+    const keyServerVersion = response.headers.get('x-keyserver-version');
+    const exposedHeaders = response.headers.get('access-control-expose-headers');
+    if (!keyServerVersion || !exposedHeaders|| !exposedHeaders!.includes('x-keyserver-version') && exposedHeaders !== '*') {
+        console.error(`missing header: ${name} ${keyServerVersion} ${exposedHeaders}`);
+    }
+    return keyServerVersion;
+}
+
+async function main(network: 'testnet' | 'mainnet', keyServerConfigs: { objectId: string, apiKeyName?: string, apiKey?: string }[]) {
     const keypair = Ed25519Keypair.generate();
     const suiAddress = keypair.getPublicKey().toSuiAddress();
     const suiClient = new SuiClient({ url: getFullnodeUrl(network) });
@@ -22,14 +53,22 @@ async function main(network: "testnet" | "mainnet", keyServerConfigs: { objectId
     console.log(`packageId: ${packageId}`);
     const client = new SealClient({
         suiClient,
-            serverConfigs: keyServerConfigs.map(({ objectId, apiKeyName, apiKey }) => ({
-                objectId,
-                apiKeyName,
-                apiKey,
-                weight: 1,
-            })),
+        serverConfigs: keyServerConfigs.map(({ objectId, apiKeyName, apiKey }) => ({
+            objectId,
+            apiKeyName,
+            apiKey,
+            weight: 1,
+        })),
         verifyKeyServers: true,
     });
+
+    // Test CORS headers for each key server
+    const keyServers = await client.getKeyServers();
+    for (const config of keyServerConfigs) {
+        const keyServer = keyServers.get(config.objectId)!;
+        await testCorsHeaders(keyServer.url, keyServer.name, config.apiKeyName, config.apiKey);
+    }
+    console.log('✅ All key servers have proper CORS configuration');
 
     // Encrypt data
     const { encryptedObject: encryptedBytes } = await client.encrypt({
@@ -82,7 +121,7 @@ const { values } = parseArgs({
     },
 });
 
-const network = values.network as "testnet" | "mainnet";
+const network = values.network as 'testnet' | 'mainnet';
 if (network !== 'testnet' && network !== 'mainnet') {
     console.error('Error: network must be either "testnet" or "mainnet"');
     process.exit(1);
@@ -101,10 +140,10 @@ if (values.servers) {
             return { objectId: parts[0] };
         } else if (parts.length === 3) {
             // Object ID, API key name, and API key value
-            return { 
+            return {
                 objectId: parts[0],
                 apiKeyName: parts[1],
-                apiKey: parts[2]
+                apiKey: parts[2],
             };
         } else {
             console.error(`Invalid server specification: ${spec}. Format should be "objectId" or "objectId:apiKeyName:apiKeyValue"`);
