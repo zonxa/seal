@@ -427,6 +427,9 @@ $ sui client call --function create_and_transfer_v1 --module key_server --packag
   - Set <KEY_SERVER_OBJECT_ID_0> from the output above. 
   - Include the list of packages this client will use.
 
+!!! info
+    You can map multiple packages from a developer to the same client (e.g., for different features or apps). However, if the developer later decides to [export the client key](#export-and-import-keys), access will be revoked for **all** packages mapped to that client. Confirm whether they prefer separate client per package (allowing for granular revocation) or a single consolidated client (allowing for simpler operations).
+
 For example: 
 
 ```yaml
