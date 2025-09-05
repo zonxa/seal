@@ -73,6 +73,9 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 /// Aborts if any of the key servers are not among the key servers found in the encrypted object.
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
+///
+/// For now, this only supports unweighted key servers, so even if the encrypted object has weighted key servers,
+/// each derived key contributes only 1 towards the threshold.
 #[allow(unused_variable)]
 public fun decrypt(
     encrypted_object: &EncryptedObject,
@@ -94,6 +97,7 @@ public fun decrypt(
     } = encrypted_object;
     assert!(verified_derived_keys.length() >= *threshold as u64);
     assert!(verified_derived_keys.all!(|vdk| vdk.package_id == *package_id && vdk.id == *id));
+    assert_all_unique(&verified_derived_keys.map_ref!(|vdk| vdk.key_server));
 
     // Verify that the public keys are from the key servers in the encrypted object and in the same order.
     let public_keys = public_keys.zip_map_ref!(services, |pk, addr| {
@@ -294,6 +298,14 @@ fun verify_derived_key(
     pairing(derived_key, &g2_generator()) == pairing(gid, public_key)
 }
 
+fun assert_all_unique<T: drop + copy>(items: &vector<T>) {
+    let mut seen = vector::empty();
+    items.do_ref!(|item| {
+        assert!(seen.find_index!(|i| i == item).is_none());
+        seen.push_back(*item);
+    })
+}
+
 /// Deserialize a BCS encoded EncryptedObject.
 /// Fails if the version is not 0.
 /// Fails if the object is not a valid EncryptedObject.
@@ -315,6 +327,7 @@ public fun parse_encrypted_object(object: vector<u8>): EncryptedObject {
         service.peel_u8()
     });
     assert!(services.length() == indices.length());
+    assert_all_unique(&indices);
     let threshold = bcs.peel_u8();
     assert!(threshold > 0 && threshold <= indices.length() as u8);
 
@@ -457,6 +470,16 @@ fun test_parse_encrypted_object() {
             ),
     );
     assert!(object.mac == x"184b788b4f5168aff51c0e6da7e2970caa02386c4dc179666ef4c6296807cda9");
+}
+
+#[test]
+#[expected_failure]
+fun test_parse_encrypted_object_duplicate_indices_rejected() {
+    // a encoded object with duplicate indices [183, 183, 123]
+    let encoded =
+        x"00000000000000000000000000000000000000000000000000000000000000000020381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f40903034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96b7d726ecf6f7036ee3557cd6c7b93a49b231070e8eecada9cfa157e40e3f02e5d3b7dba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a977b02008812277be43199222d173eed91b480ce4c8cda5aea008ef884e77c990311136486a7daf8e2d99c0389ae40319714ffef1212ffcb456f0de08a7fa1bb185c936f9efe86fb5e32232d5e433230d04b1f2b27614b3b5b13f04db7d5c3b995e7e02e036315d5a9515d050595ea15b326ebcd510baf50463afd6517b5895d0756e39878bd656bd98418df11556d1ced740c7f839d97b81ee60238b3221fb45adfb0a5d1e4aec4f777271e5674bd7ded20421aa929755426501ba8366e465f5ebb861722b2909e5ac2e8608abd885014f2fb6006dd5896ab76ea243dea0d6d6ff4c3396b010de6062eb2dcb2f86bca32f83c9301200000000000000000000000000000000000000000000000000000000000000001184b788b4f5168aff51c0e6da7e2970caa02386c4dc179666ef4c6296807cda9";
+
+    let _ = parse_encrypted_object(encoded);
 }
 
 #[test]
@@ -843,4 +866,17 @@ fun test_decryption_from_sdk() {
 
     let decrypted = decrypt(&parsed_encrypted_object, &vdks, &pks);
     assert!(decrypted.borrow() == x"010203");
+}
+
+#[test]
+#[expected_failure]
+fun test_all_unique_failure() {
+    assert_all_unique(&vector[1, 2, 3, 1]);
+}
+
+#[test]
+fun test_all_unique_success() {
+    assert_all_unique(&vector[4, 1, 2, 3]);
+    assert_all_unique(&vector[1]);
+    assert_all_unique(&vector<u8>[]);
 }
