@@ -315,7 +315,7 @@ A Seal key server can operate in one of two modes: `Open` or `Permissioned`:
 
 - **Open mode**: In open mode, the key server accepts decryption requests for *any* onchain package. It uses a single master key to serve all access policies across packages. This mode is suitable for public or general-purpose deployments where package-level isolation is not required.
 - **Permissioned mode**: In permissioned mode, the key server restricts access to a manually approved list of packages associated with specific clients or applications. Each client is served using a dedicated master key.
-  - This mode also supports importing or exporting the client-specific key if needed, for purposes such as disaster recovery or key server rotation.
+    - This mode also supports importing or exporting the client-specific key if needed, for purposes such as disaster recovery or key server rotation.
 
 You can choose the mode that best fits your deployment model and security requirements. The following sections provide more details on both options.
 
@@ -350,9 +350,9 @@ To start the key server in `Open` mode, run the command `cargo run --bin key-ser
 In the config file, make sure to:
 
 - Set the network, e.g. `Testnet`, `Mainnet`, or `!Custom` for custom RPC endpoints.
-  - For `!Custom` network, you can either specify `node_url` in the config or set the `NODE_URL` environment variable.
+    - For `!Custom` network, you can either specify `node_url` in the config or set the `NODE_URL` environment variable.
 - Set the mode to `!Open`.
-- Set the `key_server_object_id` field to <KEY_SERVER_OBJECT_ID>, the ID of the key server object you registered on-chain. 
+- Set the `key_server_object_id` field to `<KEY_SERVER_OBJECT_ID>`, the ID of the key server object you registered on-chain. 
 
 ```shell
 $ CONFIG_PATH=crates/key-server/key-server-config.yaml MASTER_KEY=<MASTER_KEY> cargo run --bin key-server
@@ -412,7 +412,7 @@ Each supported client must have a registered on-chain key server object to enabl
 #### Register a client
 
 - Register a new key server on-chain by calling the `create_and_transfer_v1` function from the `seal::key_server` module with an unassigned derived public key. 
-  - The derivation index for first client is `0` and its derived public key placeholder is `<PUBKEY_0>`. Similarly, the derivation index for nth client is `n-1` and its derived public key placeholder is `<PUBKEY_n-1>`.
+    - The derivation index for first client is `0` and its derived public key placeholder is `<PUBKEY_0>`. Similarly, the derivation index for nth client is `n-1` and its derived public key placeholder is `<PUBKEY_n-1>`.
 
 ```shell
 -- Replace `0` with the appropriate derivation index and derived public key for the nth client.
@@ -423,9 +423,9 @@ $ sui client call --function create_and_transfer_v1 --module key_server --packag
 ```
 
 - Add an entry in config file:
-  - Set `client_master_key` to type `Derived` with `derivation_index` as `n-1` for the nth client. 
-  - Set <KEY_SERVER_OBJECT_ID_0> from the output above. 
-  - Include the list of packages this client will use.
+    - Set `client_master_key` to type `Derived` with `derivation_index` as `n-1` for the nth client. 
+    - Set `<KEY_SERVER_OBJECT_ID_0>` from the output above. 
+    - Include the list of packages this client will use.
 
 !!! info
     You can map multiple packages from a developer to the same client (e.g., for different features or apps). However, if the developer later decides to [export the client key](#export-and-import-keys), access will be revoked for **all** packages mapped to that client. Confirm whether they prefer separate client per package (allowing for granular revocation) or a single consolidated client (allowing for simpler operations).
@@ -475,8 +475,8 @@ Public key: <CLIENT_MASTER_PUBKEY>
 ```
 
 - Disable this key on the current server:
-  - Change the client's `client_master_key` type to `Exported`.
-  - Set the `deprecated_derivation_index` field with the derivation index.
+    - Change the client's `client_master_key` type to `Exported`.
+    - Set the `deprecated_derivation_index` field with the derivation index.
 
 For example: 
 
@@ -488,23 +488,23 @@ For example:
 
 - To import a client master key into a different key server, first transfer the existing key server object to the target server’s owner. After completing the transfer, the new owner should update the object’s URL to point to their key server.
 
-Here's an example `Sui CLI` command assuming we are exporting <KEY_SERVER_OBJECT_ID_0>:
+Here's an example `Sui CLI` command assuming we are exporting `<KEY_SERVER_OBJECT_ID_0>`:
 
 ```shell
 $ sui transfer --object-id <KEY_SERVER_OBJECT_ID_0> --to <NEW_OWNER_ADDRESS>
 ```
 
-The owner of <NEW_OWNER_ADDRESS> can now run:
+The owner of `<NEW_OWNER_ADDRESS>` can now run:
 
 ```shell
 $ sui client call --function update --module key_server --package <PACKAGE_ID> --args <KEY_SERVER_OBJECT_ID_0> https://<NEW_URL>
 ```
 
 - The new key server owner can now add it to their config file:
-  - `client_master_key` set to type `Imported`.
-  - The name of the environment variable containing the key, e.g. `BOB_BLS_KEY`. This name will be used later.
-  - The key server object registered on-chain for this client earlier, e.g. <KEY_SERVER_OBJECT_ID_0>.
-  - The list of packages associated with the client.
+    - `client_master_key` set to type `Imported`.
+    - The name of the environment variable containing the key, e.g. `BOB_BLS_KEY`. This name will be used later.
+    - The key server object registered on-chain for this client earlier, e.g. `<KEY_SERVER_OBJECT_ID_0>`.
+    - The list of packages associated with the client.
 
 For example: 
 
