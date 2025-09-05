@@ -95,7 +95,6 @@ public fun decrypt(
         encrypted_randomness,
         services,
     } = encrypted_object;
-    assert!(verified_derived_keys.length() >= *threshold as u64);
     assert!(verified_derived_keys.all!(|vdk| vdk.package_id == *package_id && vdk.id == *id));
     assert_all_unique(&verified_derived_keys.map_ref!(|vdk| vdk.key_server));
 
@@ -107,13 +106,17 @@ public fun decrypt(
 
     // Find the indices of the key servers corresponding to the derived keys.
     // This aborts if one of the given derived keys is not from a key server in the encrypted object.
-    let given_indices = verified_derived_keys.map_ref!(
-        |vdk| services.find_index!(|service| vdk.key_server.to_address() == service).extract(),
+    let indices_per_vdk = verified_derived_keys.map_ref!(
+        |vdk| services.find_indices!(|service| vdk.key_server.to_address() == service),
     );
+
+    // Flatten the indices per derived key to get all the indices.
+    let given_indices = indices_per_vdk.flatten();
+    assert!(given_indices.length() >= *threshold as u64);
 
     // Decrypt shares.
     let decrypted_shares = decrypt_shares_with_derived_keys(
-        &given_indices,
+        &indices_per_vdk,
         verified_derived_keys,
         encrypted_object,
     );
@@ -210,24 +213,26 @@ fun verify_share(polynomials: &vector<Polynomial>, share: &vector<u8>, index: u8
 /// Decrypt the given shares with the derived keys.
 /// Panics if the number of indices does not match the number of derived keys.
 fun decrypt_shares_with_derived_keys(
-    indices: &vector<u64>,
+    indes_per_vdk: &vector<vector<u64>>,
     derived_keys: &vector<VerifiedDerivedKey>,
     encrypted_object: &EncryptedObject,
 ): vector<vector<u8>> {
     let gid = hash_to_g1_with_dst(
         &create_full_id(encrypted_object.package_id, encrypted_object.id),
     );
-    indices.zip_map_ref!(derived_keys, |i, vdk| {
-        xor(
-            &encrypted_object.encrypted_shares[*i],
-            &kdf(
-                &pairing(&vdk.derived_key, &encrypted_object.nonce),
-                &encrypted_object.nonce,
-                &gid,
-                encrypted_object.services[*i],
-                encrypted_object.indices[*i],
-            ),
-        )
+    indes_per_vdk.zip_map_ref!(derived_keys, |indices, vdk| {
+        indices.map_ref!(|i| {
+            xor(
+                &encrypted_object.encrypted_shares[*i],
+                &kdf(
+                    &pairing(&vdk.derived_key, &encrypted_object.nonce),
+                    &encrypted_object.nonce,
+                    &gid,
+                    encrypted_object.services[*i],
+                    encrypted_object.indices[*i],
+                ),
+            )
+        }).flatten()
     })
 }
 
