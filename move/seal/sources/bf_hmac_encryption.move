@@ -102,11 +102,9 @@ public fun decrypt(
 
     // Find the indices of the public keys corresponding to the key servers in the encrypted object.
     // This aborts if one of the given public keys is not from a key server in the encrypted object.
-    let public_keys_indices = services.map_ref!(|addr| {
-        let index = public_keys.find_index!(|pk| pk.key_server.to_address() == addr);
-        assert!(index.is_some());
-        index.destroy_some()
-    });
+    let public_keys_indices = services.map_ref!(
+        |addr| public_keys.find_index!(|pk| pk.key_server.to_address() == addr).destroy_some(),
+    );
 
     // Find the indices of the key servers corresponding to the derived keys.
     // This aborts if one of the given derived keys is not from a key server in the encrypted object.
