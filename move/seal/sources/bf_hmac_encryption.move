@@ -302,6 +302,7 @@ fun xor(a: &vector<u8>, b: &vector<u8>): vector<u8> {
 }
 
 /// Returns a vector of `VerifiedDerivedKey`s, asserting that all derived_keys are valid for the given full ID and key servers.
+/// The order of the derived keys and the public keys must match.
 /// Aborts if the number of key servers does not match the number of derived keys.
 public fun verify_derived_keys(
     derived_keys: &vector<Element<G1>>,
