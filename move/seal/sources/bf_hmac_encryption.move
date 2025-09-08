@@ -967,6 +967,10 @@ fun test_decryption_weighted() {
     let usk0 =
         x"94220eb0f98df631ba2035a8a9546af236a42e5793522c7b57c21d82b409a25a4a60b49a055216413e56508d76bd9103";
 
+    // cargo run --bin seal-cli extract --package-id 0x01e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e04255 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 182face78dda79b6f63157688c1dd5f2b86c1a53bf390d58415bf7ec1a5bc3f3
+    let _usk1 =
+        x"8edcce70b0bff33e65da09cf4dc8f145b12b6f8a5f6387907dad0ab471e3ebe4b5e245c05e349a14be4739d93ef673b6";
+
     let user_secret_keys = vector[g1_from_bytes(&usk0)];
     let vdks = verify_derived_keys(
         &user_secret_keys,
@@ -975,7 +979,6 @@ fun test_decryption_weighted() {
         &pks,
     );
 
-    //
     let all_pks = vector[
         new_public_key(parsed_encrypted_object.services[2].to_id(), pk1),
         new_public_key(parsed_encrypted_object.services[0].to_id(), pk0),
@@ -983,4 +986,115 @@ fun test_decryption_weighted() {
 
     let decrypted = decrypt(&parsed_encrypted_object, &vdks, &all_pks);
     assert!(decrypted.borrow() == b"Hello, world!");
+}
+
+#[test]
+#[expected_failure]
+fun test_decryption_weighted_to_few_keys() {
+    use sui::bls12381::{g1_from_bytes};
+
+    let pk0 =
+        x"aa1a3b03364dae6530c710794cf18bffd649c4791d3c62a19d86d821938163253d1f5925614ccf41c416bd4a682902c708a6673cab8403062013f8eb99128a2e27928f8f18a8929d8a87823e6098409257f93dac214f27de881078a7c686dbbf";
+    let pk1 =
+        x"aef2286a83e8f3fd957ec6ad3861642c3b4702e50e98df2d18df8dd1a5754d2d40ad6fc321a0f85e6415f15d1ef2a2fb14ab1f6dde08a8d4f32863429c54808b5e64480b070b41aaf22ccc6d9c4987d60afdf20be6ef6830927decae3945f3c6";
+
+    // For reference, the encryption was created with the following CLI command:
+    // cargo run --bin seal-cli encrypt-hmac --message 48656C6C6F2C20776F726C6421 --package-id 0x01e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e04255 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 2 aa1a3b03364dae6530c710794cf18bffd649c4791d3c62a19d86d821938163253d1f5925614ccf41c416bd4a682902c708a6673cab8403062013f8eb99128a2e27928f8f18a8929d8a87823e6098409257f93dac214f27de881078a7c686dbbf aa1a3b03364dae6530c710794cf18bffd649c4791d3c62a19d86d821938163253d1f5925614ccf41c416bd4a682902c708a6673cab8403062013f8eb99128a2e27928f8f18a8929d8a87823e6098409257f93dac214f27de881078a7c686dbbf aef2286a83e8f3fd957ec6ad3861642c3b4702e50e98df2d18df8dd1a5754d2d40ad6fc321a0f85e6415f15d1ef2a2fb14ab1f6dde08a8d4f32863429c54808b5e64480b070b41aaf22ccc6d9c4987d60afdf20be6ef6830927decae3945f3c6 -- 0x08d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de9 0x08d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de9 0x76f8a77e2f6517caecb29a78a6e9e6bea89602b21997e33b5aea05f32a3cf0a2
+    let encrypted_object =
+        x"0001e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e0425520381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f4090308d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de90108d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de90276f8a77e2f6517caecb29a78a6e9e6bea89602b21997e33b5aea05f32a3cf0a2030200a72dc1fcaef5d5bd746c838a9785e930feb029618fca93c9d8d108e1ed794b1b3c6d22eda462ee852a995b015bd9d6470e45080f3bc45f3dcf5e8893cf4bcada6da81c9796df27bdd435a4e22580f1f9d30cb9bc81920d538d6775ca4918fee2038ec0bae829ffdf655dc3f6ffa44411beac8e45aaee637d799ac8ba1d13ae66d51697d919280bcbfd35b98e35e5a4f3698e77d2b88c08505613edd09c31fc94e842472206fc4b1c876b2be2e8c584b0103bcbceec2cad01191a5a36490157d6dc9fa1929c0d51692fbf639df87b1f5e6070c86b2acc589dba28db17a01e1ab904010d74a567e366794310e43eca714d007a988d08b053734fd90d1908b555b530f2892e00a8958ac7a60295f3f7cc9cc9";
+
+    let parsed_encrypted_object = parse_encrypted_object(encrypted_object);
+
+    let pks = vector[new_public_key(parsed_encrypted_object.services[2].to_id(), pk1)];
+
+    // cargo run --bin seal-cli extract --package-id 0x01e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e04255 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 598efdc9a8791303a40d6c197fe639a6f41ad33313008a55778f42167e547e99
+    let _usk0 =
+        x"94220eb0f98df631ba2035a8a9546af236a42e5793522c7b57c21d82b409a25a4a60b49a055216413e56508d76bd9103";
+
+    // cargo run --bin seal-cli extract --package-id 0x01e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e04255 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 182face78dda79b6f63157688c1dd5f2b86c1a53bf390d58415bf7ec1a5bc3f3
+    let usk1 =
+        x"8edcce70b0bff33e65da09cf4dc8f145b12b6f8a5f6387907dad0ab471e3ebe4b5e245c05e349a14be4739d93ef673b6";
+
+    let user_secret_keys = vector[g1_from_bytes(&usk1)];
+    let vdks = verify_derived_keys(
+        &user_secret_keys,
+        parsed_encrypted_object.package_id,
+        parsed_encrypted_object.id,
+        &pks,
+    );
+
+    let all_pks = vector[
+        new_public_key(parsed_encrypted_object.services[2].to_id(), pk1),
+        new_public_key(parsed_encrypted_object.services[0].to_id(), pk0),
+    ];
+
+    decrypt(&parsed_encrypted_object, &vdks, &all_pks);
+}
+
+#[test]
+fun test_decryption_weighted_different_keys() {
+    use sui::bls12381::{g1_from_bytes};
+
+    // Weight 3
+    let pk0 =
+        x"8bb2b11fb7d6f22206a3df8a697876b13b62dc250131e169bf4961cb3bd80593cc147e8d18245316e60d1eec3e146d5f048703c2b42296eba37d5b093dd1c5122448f86199c1b4b8b49fb4f0a42c9e9723121e83d701ece7f6758f2c372bd3a2";
+
+    // Weight 2
+    let pk1 =
+        x"8cfbdfc367058c4e895d7e472059d14a9a22ac444ab6d9bf33239b749ce33379c9983d48aee7a6b42966b83668d3714811abcd4cc23a6bfc05deab76f0c244f9bb4cd237b3e8bd130876928b046eaeec155e8bef09f286094a74a1e8b75a5b20";
+
+    // Weight 1
+    let pk2 =
+        x"aaeb8b7087bfc54f255b688f7c844605dd5948a87e87275a1b7a2337c1594b59171d75dfd1f9a30b947d5e89143f43b7130f50944d1f794920903d960a42d800a02dd355078ba328cc892160f5dc9fa603bfd560e07f05238fcdcde1db9371bb";
+
+    // For reference, the encryption was created with the following CLI command:
+    // cargo run --bin seal-cli encrypt-hmac --message 48656c6c6f2c20576f726c6421 --package-id 0x09b0145e3055ed55968643a0385bcee2fd28cf512f107adef9db864b4136f0dd --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 3 8bb2b11fb7d6f22206a3df8a697876b13b62dc250131e169bf4961cb3bd80593cc147e8d18245316e60d1eec3e146d5f048703c2b42296eba37d5b093dd1c5122448f86199c1b4b8b49fb4f0a42c9e9723121e83d701ece7f6758f2c372bd3a2 8bb2b11fb7d6f22206a3df8a697876b13b62dc250131e169bf4961cb3bd80593cc147e8d18245316e60d1eec3e146d5f048703c2b42296eba37d5b093dd1c5122448f86199c1b4b8b49fb4f0a42c9e9723121e83d701ece7f6758f2c372bd3a2 8bb2b11fb7d6f22206a3df8a697876b13b62dc250131e169bf4961cb3bd80593cc147e8d18245316e60d1eec3e146d5f048703c2b42296eba37d5b093dd1c5122448f86199c1b4b8b49fb4f0a42c9e9723121e83d701ece7f6758f2c372bd3a2 8cfbdfc367058c4e895d7e472059d14a9a22ac444ab6d9bf33239b749ce33379c9983d48aee7a6b42966b83668d3714811abcd4cc23a6bfc05deab76f0c244f9bb4cd237b3e8bd130876928b046eaeec155e8bef09f286094a74a1e8b75a5b20 8cfbdfc367058c4e895d7e472059d14a9a22ac444ab6d9bf33239b749ce33379c9983d48aee7a6b42966b83668d3714811abcd4cc23a6bfc05deab76f0c244f9bb4cd237b3e8bd130876928b046eaeec155e8bef09f286094a74a1e8b75a5b20 aaeb8b7087bfc54f255b688f7c844605dd5948a87e87275a1b7a2337c1594b59171d75dfd1f9a30b947d5e89143f43b7130f50944d1f794920903d960a42d800a02dd355078ba328cc892160f5dc9fa603bfd560e07f05238fcdcde1db9371bb -- 0x668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f8 0x668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f8 0x668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f8 0x1adda0d74f248a645d5088ef39777a8c908d95173a3be6f06f6b4d9b42ba3c9c 0x1adda0d74f248a645d5088ef39777a8c908d95173a3be6f06f6b4d9b42ba3c9c 0x4a2b84bdd3944d5cf4b9547cad380eb18139616c302949ba7d84a6922392c324
+    let encrypted_object =
+        x"0009b0145e3055ed55968643a0385bcee2fd28cf512f107adef9db864b4136f0dd20381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f40906668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f801668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f802668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f8031adda0d74f248a645d5088ef39777a8c908d95173a3be6f06f6b4d9b42ba3c9c041adda0d74f248a645d5088ef39777a8c908d95173a3be6f06f6b4d9b42ba3c9c054a2b84bdd3944d5cf4b9547cad380eb18139616c302949ba7d84a6922392c324060300b335f5b272e3cdb8ddda04834de48a061b5ba654b0e0c0fcb24e0d77dc38173f098991a08fb1dd96b257d7f4e6e2f70114dfaad926a970f9f5368b43af2ac18cad28fc3c55599456e613303e822dfda3a1995d85328a506c53adb06a6d445ed2066f716db98482ef539c4acf5204d5c7db92d27ef22eda471361a71cc26e7e23f297630e316ec0dd215b96cc435cfa189b14c9fd04f92bcc6595872cd2e8b46138432f8326c6fd7b641c5560b57a55f29fbf7cb048ea2b82874981a6f3cf758f0ec43da59034fc31c9855931975e74bc9c6fa7d45ea52df0fb26ebd4034f78f62893c6befb544d6b5b98e80a02c91b950682b6925a35b197f839b807ac9e74e812f0825019d0d06bafcabe900cdbf475251c50ff5897cdb16c787b065923b970f7991b859e04325ad90ec09c68fa7a0b405440525e09b5e65036356730c21d66ac010da22c700c6a81780fa2d86d54240009bd602e23f1a427b7a584b40c9cd9ec7d3e135d54c1d3b1e07dbcdffbebf52d";
+    let parsed_encrypted_object = parse_encrypted_object(encrypted_object);
+
+    // cargo run --bin seal-cli extract --package-id 0x09b0145e3055ed55968643a0385bcee2fd28cf512f107adef9db864b4136f0dd --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 668b8a738c4f189676ad1383aa5cb930d37f01c36ed08e3b3274a04078b134f8
+    let usk0 =
+        x"b2a7377f0959f972286f6328233bca2ffa68635977b7f5bd8b3e5a2dca86f5380475ea867224c4612382849ab3a26074";
+
+    // cargo run --bin seal-cli extract --package-id 0x09b0145e3055ed55968643a0385bcee2fd28cf512f107adef9db864b4136f0dd --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 1adda0d74f248a645d5088ef39777a8c908d95173a3be6f06f6b4d9b42ba3c9c
+    let usk1 =
+        x"aec1712b4c7dbedaf873f1fd7cef24b1c14953107e3bb54a34c8a8af1b16b46d26ef261ca46928f836111a69850cf91f";
+
+    // cargo run --bin seal-cli extract --package-id 0x09b0145e3055ed55968643a0385bcee2fd28cf512f107adef9db864b4136f0dd --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 4a2b84bdd3944d5cf4b9547cad380eb18139616c302949ba7d84a6922392c324
+    let usk2 =
+        x"98a7a8604a48320391df4db93b83607629be022942364e1baf76f1e1f0f7710606f05489257bc5399b9e349a20c020b3";
+
+    let all_pks = vector[
+        new_public_key(parsed_encrypted_object.services[3].to_id(), pk1),
+        new_public_key(parsed_encrypted_object.services[5].to_id(), pk2),
+        new_public_key(parsed_encrypted_object.services[0].to_id(), pk0),
+    ];
+
+    // The first keyserver has weight 3, so enough to decrypt
+    let pks_1 = vector[new_public_key(parsed_encrypted_object.services[0].to_id(), pk0)];
+    let user_secret_keys_1 = vector[g1_from_bytes(&usk0)];
+    let vdks_1 = verify_derived_keys(
+        &user_secret_keys_1,
+        parsed_encrypted_object.package_id,
+        parsed_encrypted_object.id,
+        &pks_1,
+    );
+    let decrypted_1 = decrypt(&parsed_encrypted_object, &vdks_1, &all_pks);
+    assert!(decrypted_1.destroy_some() == b"Hello, World!");
+
+    // Keyserver 1 and 2 has weight 3 combined, so also enough to decrypt
+    let pks_2 = vector[
+        new_public_key(parsed_encrypted_object.services[3].to_id(), pk1),
+        new_public_key(parsed_encrypted_object.services[5].to_id(), pk2),
+    ];
+    let user_secret_keys_2 = vector[g1_from_bytes(&usk1), g1_from_bytes(&usk2)];
+    let vdks_2 = verify_derived_keys(
+        &user_secret_keys_2,
+        parsed_encrypted_object.package_id,
+        parsed_encrypted_object.id,
+        &pks_2,
+    );
+    let decrypted_2 = decrypt(&parsed_encrypted_object, &vdks_2, &all_pks);
+    assert!(decrypted_2.destroy_some() == b"Hello, World!");
 }
