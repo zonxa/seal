@@ -74,8 +74,9 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
 ///
-/// For now, this only supports unweighted key servers, so even if the encrypted object has weighted key servers,
-/// each derived key contributes only 1 towards the threshold.
+/// If some key servers are weighted, each derived key contributes the weight of the key server to the threshold.
+/// The public keys for all key servers must be provided, but they can be in any order. They do not need to be duplicated in case of weighted key servers.
+/// The verified derived keys can be in any order, but there should be only one per key server.
 #[allow(unused_variable)]
 public fun decrypt(
     encrypted_object: &EncryptedObject,
@@ -98,11 +99,11 @@ public fun decrypt(
     assert!(verified_derived_keys.all!(|vdk| vdk.package_id == *package_id && vdk.id == *id));
     assert_all_unique(&verified_derived_keys.map_ref!(|vdk| vdk.key_server));
 
-    // Verify that the public keys are from the key servers in the encrypted object and in the same order.
-    // If there are duplicates, the public keys should also be duplicated.
-    let public_keys = public_keys.zip_map_ref!(services, |pk, addr| {
-        assert!(pk.key_server.to_address() == addr);
-        pk.pk
+    // Verify that all public keys are given
+    let public_keys_indices = services.map_ref!(|addr| {
+        let index = public_keys.find_index!(|pk| pk.key_server.to_address() == addr);
+        assert!(index.is_some());
+        index.destroy_some()
     });
 
     // Find the indices of the key servers corresponding to the derived keys.
@@ -149,7 +150,7 @@ public fun decrypt(
     let all_shares = decrypt_all_shares_with_randomness(
         &randomness,
         encrypted_object,
-        &public_keys,
+        &public_keys_indices.map_ref!(|i| public_keys[*i].pk),
     );
 
     // Verify the consistency of the shares, eg. that they are all consistent with the polynomial interpolated from the shares decrypted from the given keys.
@@ -974,10 +975,10 @@ fun test_decryption_weighted() {
         &pks,
     );
 
+    //
     let all_pks = vector[
-        new_public_key(parsed_encrypted_object.services[0].to_id(), pk0),
-        new_public_key(parsed_encrypted_object.services[1].to_id(), pk0),
         new_public_key(parsed_encrypted_object.services[2].to_id(), pk1),
+        new_public_key(parsed_encrypted_object.services[0].to_id(), pk0),
     ];
 
     let decrypted = decrypt(&parsed_encrypted_object, &vdks, &all_pks);
