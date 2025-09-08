@@ -122,9 +122,6 @@ public fun decrypt(
         encrypted_object,
     );
 
-    std::debug::print(&given_indices.map!(|i| indices[i]));
-    std::debug::print(&decrypted_shares);
-
     // Interpolate polynomials from the decrypted shares.
     let polynomials = interpolate_all(&given_indices.map!(|i| indices[i]), &decrypted_shares);
 
@@ -132,8 +129,6 @@ public fun decrypt(
     let base_key = polynomials.map_ref!(|p| p.get_constant_term());
     let randomness_key = derive_key(KeyPurpose::EncryptedRandomness, &base_key, encrypted_object);
     let dem_key = derive_key(KeyPurpose::DEM, &base_key, encrypted_object);
-
-    std::debug::print(&1);
 
     // Decrypt the randomness
     let randomness = decrypt_randomness(
@@ -145,14 +140,10 @@ public fun decrypt(
     };
     let randomness = randomness.destroy_some();
 
-    std::debug::print(&2);
-
     // Use the randomness to verify the nonce.
     if (!verify_nonce(&randomness, &encrypted_object.nonce)) {
         return none()
     };
-
-    std::debug::print(&3);
 
     // Now, all shares can be decrypted using the randomness and the public keys.
     let all_shares = decrypt_all_shares_with_randomness(
@@ -160,8 +151,6 @@ public fun decrypt(
         encrypted_object,
         &public_keys,
     );
-
-    std::debug::print(&4);
 
     // Verify the consistency of the shares, eg. that they are all consistent with the polynomial interpolated from the shares decrypted from the given keys.
     if (
@@ -171,8 +160,6 @@ public fun decrypt(
     ) {
         return none()
     };
-
-    std::debug::print(&5);
 
     // Decrypt the blob.
     hmac256ctr::decrypt(
@@ -962,30 +949,28 @@ fun test_decryption_weighted() {
     use sui::bls12381::{g1_from_bytes};
 
     let pk0 =
-        x"a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161";
+        x"aa1a3b03364dae6530c710794cf18bffd649c4791d3c62a19d86d821938163253d1f5925614ccf41c416bd4a682902c708a6673cab8403062013f8eb99128a2e27928f8f18a8929d8a87823e6098409257f93dac214f27de881078a7c686dbbf";
     let pk1 =
-        x"a9ce55cfa7009c3116ea29341151f3c40809b816f4ad29baa4f95c1bb23085ef02a46cf1ae5bd570d99b0c6e9faf525306224609300b09e422ae2722a17d2a969777d53db7b52092e4d12014da84bffb1e845c2510e26b3c259ede9e42603cd6";
+        x"aef2286a83e8f3fd957ec6ad3861642c3b4702e50e98df2d18df8dd1a5754d2d40ad6fc321a0f85e6415f15d1ef2a2fb14ab1f6dde08a8d4f32863429c54808b5e64480b070b41aaf22ccc6d9c4987d60afdf20be6ef6830927decae3945f3c6";
 
     // For reference, the encryption was created with the following CLI command:
-    // cargo run --bin seal-cli encrypt-hmac --message 48656C6C6F2C20776F726C6421 --aad 0x0000000000000000000000000000000000000000000000000000000000000001 --package-id 0x0 --id 381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 2 a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161 a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161 93b3220f4f3a46fb33074b590cda666c0ebc75c7157d2e6492c62b4aebc452c29f581361a836d1abcbe1386268a5685103d12dec04aadccaebfa46d4c92e2f2c0381b52d6f2474490d02280a9e9d8c889a3fce2753055e06033f39af86676651 -- 0x34401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96 0x34401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96 0xdba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a97
+    // cargo run --bin seal-cli encrypt-hmac --message 48656C6C6F2C20776F726C6421 --package-id 0x01e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e04255 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --threshold 2 aa1a3b03364dae6530c710794cf18bffd649c4791d3c62a19d86d821938163253d1f5925614ccf41c416bd4a682902c708a6673cab8403062013f8eb99128a2e27928f8f18a8929d8a87823e6098409257f93dac214f27de881078a7c686dbbf aa1a3b03364dae6530c710794cf18bffd649c4791d3c62a19d86d821938163253d1f5925614ccf41c416bd4a682902c708a6673cab8403062013f8eb99128a2e27928f8f18a8929d8a87823e6098409257f93dac214f27de881078a7c686dbbf aef2286a83e8f3fd957ec6ad3861642c3b4702e50e98df2d18df8dd1a5754d2d40ad6fc321a0f85e6415f15d1ef2a2fb14ab1f6dde08a8d4f32863429c54808b5e64480b070b41aaf22ccc6d9c4987d60afdf20be6ef6830927decae3945f3c6 -- 0x08d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de9 0x08d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de9 0x76f8a77e2f6517caecb29a78a6e9e6bea89602b21997e33b5aea05f32a3cf0a2
     let encrypted_object =
-        x"00000000000000000000000000000000000000000000000000000000000000000020381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f40903034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab9601034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab9602dba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a970302008707022db5bd4db4f9ef77595f1647a170d457ad355b1e02089791a3ddd43ee7103eba147e731d1bba31ed19469b4dcd16c92f90f49c5874a678dbbc5fa7ef950dbe5171d8d898342a1df3e53b3f7f83d3fa150eb372f995173d5b59c66cd9fc037ce3baf132ebce3ac744c22d18425699e570f03c9234dacec1b9dda9c5f6fce26e03c8c7c15dd86670a8f3a6585425191a8de0e9c0b71045e644bfa45bf83d074d421e4f39bbabf913bf4e5c14b3ffa5803db6ee69955af0adda4bcc68c9e49cee6281aa3c72cacef6e14675e47dcc4b276500025c7e7c1f985683802382e3f0010dcc3e2d7dc960332f601edc1a7801200000000000000000000000000000000000000000000000000000000000000001cf4cee99f6433c8464587156e24cd21b784156a6f7cde3a70487d8e3059962e1";
+        x"0001e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e0425520381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f4090308d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de90108d66b8ef900ec6b61972d0f56dde411145ec4be2bd66c7faf3ee66e1df99de90276f8a77e2f6517caecb29a78a6e9e6bea89602b21997e33b5aea05f32a3cf0a2030200a72dc1fcaef5d5bd746c838a9785e930feb029618fca93c9d8d108e1ed794b1b3c6d22eda462ee852a995b015bd9d6470e45080f3bc45f3dcf5e8893cf4bcada6da81c9796df27bdd435a4e22580f1f9d30cb9bc81920d538d6775ca4918fee2038ec0bae829ffdf655dc3f6ffa44411beac8e45aaee637d799ac8ba1d13ae66d51697d919280bcbfd35b98e35e5a4f3698e77d2b88c08505613edd09c31fc94e842472206fc4b1c876b2be2e8c584b0103bcbceec2cad01191a5a36490157d6dc9fa1929c0d51692fbf639df87b1f5e6070c86b2acc589dba28db17a01e1ab904010d74a567e366794310e43eca714d007a988d08b053734fd90d1908b555b530f2892e00a8958ac7a60295f3f7cc9cc9";
 
     let parsed_encrypted_object = parse_encrypted_object(encrypted_object);
 
-    let pks = vector[
-        new_public_key(parsed_encrypted_object.services[0].to_id(), pk0),
-    ];
+    let pks = vector[new_public_key(parsed_encrypted_object.services[0].to_id(), pk0)];
 
-    // cargo run --bin seal-cli extract --package-id 0x0 --id 381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 3c185eb32f1ab43a013c7d84659ec7b59791ca76764af4ee8d387bf05621f0c7
+    // cargo run --bin seal-cli extract --package-id 0x01e64f3c53fb5923a9705e1f1adf9f2b4c68b7bd660305af2778706ac8e04255 --id 0x381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409 --master-key 598efdc9a8791303a40d6c197fe639a6f41ad33313008a55778f42167e547e99
     let usk0 =
-        x"8cb19351dbd351d02292a77a18e2f0f4ec0d3becf23f37cc87e4870bf35522c3e59487e0ee5023d5e2e383e40b77bd98";
+        x"94220eb0f98df631ba2035a8a9546af236a42e5793522c7b57c21d82b409a25a4a60b49a055216413e56508d76bd9103";
 
     let user_secret_keys = vector[g1_from_bytes(&usk0)];
     let vdks = verify_derived_keys(
         &user_secret_keys,
-        @0x0,
-        x"381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f409",
+        parsed_encrypted_object.package_id,
+        parsed_encrypted_object.id,
         &pks,
     );
 
