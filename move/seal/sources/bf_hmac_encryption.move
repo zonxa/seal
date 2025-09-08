@@ -71,6 +71,7 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 ///
 /// Aborts if there are not enough verified derived keys.
 /// Aborts if any of the key servers are not among the key servers found in the encrypted object.
+/// Aborts if public_keys do not contain a public key for all key servers in the encrypted object.
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
 ///
@@ -99,7 +100,8 @@ public fun decrypt(
     assert!(verified_derived_keys.all!(|vdk| vdk.package_id == *package_id && vdk.id == *id));
     assert_all_unique(&verified_derived_keys.map_ref!(|vdk| vdk.key_server));
 
-    // Verify that all public keys are given
+    // Find the indices of the public keys corresponding to the key servers in the encrypted object.
+    // This aborts if one of the given public keys is not from a key server in the encrypted object.
     let public_keys_indices = services.map_ref!(|addr| {
         let index = public_keys.find_index!(|pk| pk.key_server.to_address() == addr);
         assert!(index.is_some());
