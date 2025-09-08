@@ -69,15 +69,15 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 ///
 /// Call `verify_derived_keys` to verify derived keys before calling this function.
 ///
-/// Aborts if there are not enough verified derived keys.
-/// Aborts if any of the key servers are not among the key servers found in the encrypted object.
-/// Aborts if public_keys do not contain a public key for all key servers in the encrypted object.
+/// Aborts if there are not enough verified derived keys to reach the threshold.
+/// Aborts if any of the key servers for the given verified derived keys are not among the key servers found in the encrypted object.
+/// Aborts if the given public key do not contain a public key for all key servers in the encrypted object.
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
 ///
 /// If some key servers are weighted, each derived key contributes the weight of the key server to the threshold.
 /// The public keys for all key servers must be provided, but they can be in any order. They do not need to be duplicated in case of weighted key servers.
-/// The verified derived keys can be in any order, but there should be only one per key server.
+/// The provided verified derived keys can be in any order, but there should be only one per key server.
 #[allow(unused_variable)]
 public fun decrypt(
     encrypted_object: &EncryptedObject,
