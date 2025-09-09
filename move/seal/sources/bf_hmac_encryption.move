@@ -72,11 +72,12 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 /// Aborts if there are not enough verified derived keys to reach the threshold.
 /// Aborts if any of the key servers for the given verified derived keys are not among the key servers found in the encrypted object.
 /// Aborts if the given public keys do not contain a public key for all key servers in the encrypted object.
+/// Aborts if there are duplicate public keys.
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
 ///
 /// If some key servers are weighted, each derived key contributes the weight of the key server to the threshold.
-/// The public keys for all key servers must be provided, but they can be in any order. They do not need to be duplicated in case of weighted key servers.
+/// The public keys for all key servers must be provided exactly once, but they can be in any order.
 /// The provided verified derived keys can be in any order, but there should be only one per key server.
 #[allow(unused_variable)]
 public fun decrypt(
@@ -99,6 +100,7 @@ public fun decrypt(
     } = encrypted_object;
     assert!(verified_derived_keys.all!(|vdk| vdk.package_id == *package_id && vdk.id == *id));
     assert_all_unique(&verified_derived_keys.map_ref!(|vdk| vdk.key_server));
+    assert_all_unique(&public_keys.map_ref!(|pk| pk.key_server));
 
     // Find the indices of the public keys corresponding to the key servers in the encrypted object.
     // This aborts if one of the given public keys is not from a key server in the encrypted object.
@@ -108,9 +110,11 @@ public fun decrypt(
 
     // Find the indices of the key servers corresponding to the derived keys.
     // This aborts if one of the given derived keys is not from a key server in the encrypted object.
-    let indices_per_vdk = verified_derived_keys.map_ref!(
-        |vdk| services.find_indices!(|service| vdk.key_server.to_address() == service),
-    );
+    let indices_per_vdk = verified_derived_keys.map_ref!(|vdk| {
+        let indices = services.find_indices!(|service| vdk.key_server.to_address() == service);
+        assert!(!indices.is_empty());
+        indices
+    });
 
     // Flatten the indices per derived key to get all the indices.
     let given_indices = indices_per_vdk.flatten();
@@ -215,14 +219,14 @@ fun verify_share(polynomials: &vector<Polynomial>, share: &vector<u8>, index: u8
 /// Decrypt the given shares with the derived keys.
 /// Panics if the number of indices does not match the number of derived keys.
 fun decrypt_shares_with_derived_keys(
-    indes_per_vdk: &vector<vector<u64>>,
+    indices_per_vdk: &vector<vector<u64>>,
     derived_keys: &vector<VerifiedDerivedKey>,
     encrypted_object: &EncryptedObject,
 ): vector<vector<u8>> {
     let gid = hash_to_g1_with_dst(
         &create_full_id(encrypted_object.package_id, encrypted_object.id),
     );
-    indes_per_vdk.zip_map_ref!(derived_keys, |indices, vdk| {
+    indices_per_vdk.zip_map_ref!(derived_keys, |indices, vdk| {
         indices.map_ref!(|i| {
             xor(
                 &encrypted_object.encrypted_shares[*i],
