@@ -71,7 +71,7 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 ///
 /// Aborts if there are not enough verified derived keys to reach the threshold.
 /// Aborts if any of the key servers for the given verified derived keys are not among the key servers found in the encrypted object.
-/// Aborts if the given public key do not contain a public key for all key servers in the encrypted object.
+/// Aborts if the given public keys do not contain a public key for all key servers in the encrypted object.
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
 ///
