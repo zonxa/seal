@@ -28,6 +28,7 @@ use crypto::prefixed_hex::PrefixedHex;
 use errors::InternalError;
 use externals::get_latest_checkpoint_timestamp;
 use fastcrypto::ed25519::{Ed25519PublicKey, Ed25519Signature};
+use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::VerifyingKey;
 use futures::future::pending;
 use jsonrpsee::core::ClientError;
@@ -59,6 +60,7 @@ use sui_sdk::types::transaction::{ProgrammableTransaction, TransactionKind};
 use sui_sdk::verify_personal_message_signature::verify_personal_message_signature;
 use sui_sdk::SuiClientBuilder;
 use tap::tap::TapFallible;
+use tap::Tap;
 use tokio::sync::watch::Receiver;
 use tokio::task::JoinHandle;
 use tower_http::cors::{Any, CorsLayer};
@@ -295,8 +297,10 @@ impl Server {
                         _ => {}
                     }
                 }
-                warn!("Dry run execution failed ({:?}) (req_id: {:?})", e, req_id);
-                InternalError::Failure
+                InternalError::Failure(format!(
+                    "Dry run execution failed ({:?}) (req_id: {:?})",
+                    e, req_id
+                ))
             })?;
         debug!("Dry run response: {:?} (req_id: {:?})", dry_run_res, req_id);
         if let SuiExecutionStatus::Failure { error } = dry_run_res.effects.status() {
@@ -372,7 +376,10 @@ impl Server {
         ids: &[KeyId],
         enc_key: &ElGamalPublicKey,
     ) -> FetchKeyResponse {
-        debug!("Creating response for ids: {:?}", ids);
+        debug!(
+            "Creating response for ids: {:?}",
+            ids.iter().map(Hex::encode).collect::<Vec<_>>()
+        );
         let master_key = self
             .master_keys
             .get_key_for_package(&first_pkg_id)
@@ -472,6 +479,7 @@ impl Server {
     }
 }
 
+#[allow(clippy::single_match)]
 async fn handle_fetch_key_internal(
     app_state: &MyState,
     payload: &FetchKeyRequest,
@@ -501,10 +509,15 @@ async fn handle_fetch_key_internal(
             req_id,
             payload.certificate.mvr_name.clone(),
         )
-        .await.tap_ok(|_| info!(
-            "Valid request: {}",
-            json!({ "user": payload.certificate.user, "package_id": valid_ptb.pkg_id(), "req_id": req_id, "sdk_version": sdk_version })
-        ))
+        .await
+        .tap(|r| {
+            let request_info = json!({ "user": payload.certificate.user, "package_id": valid_ptb.pkg_id(), "req_id": req_id, "sdk_version": sdk_version });
+            match r {
+                Ok(_) => info!("Valid request: {request_info}"),
+                Err(InternalError::Failure(s)) => warn!("Check request failed with debug message '{s}': {request_info}"),
+                _ => {},
+            }
+        })
 }
 
 async fn handle_fetch_key(
@@ -581,11 +594,10 @@ impl MyState {
         let staleness =
             saturating_duration_since(*self.latest_checkpoint_timestamp_receiver.borrow());
         if staleness > self.server.options.allowed_staleness {
-            warn!(
+            return Err(InternalError::Failure(format!(
                 "Full node is stale. Latest checkpoint is {} ms old.",
                 staleness.as_millis()
-            );
-            return Err(InternalError::Failure);
+            )));
         }
         Ok(())
     }

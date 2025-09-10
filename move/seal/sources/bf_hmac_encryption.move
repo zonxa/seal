@@ -73,6 +73,9 @@ public fun get_public_key(key_server: &seal::key_server::KeyServer): PublicKey {
 /// Aborts if any of the key servers are not among the key servers found in the encrypted object.
 ///
 /// If the decryption fails, e.g. the AAD or MAC is invalid, the function returns `none`.
+///
+/// For now, this only supports unweighted key servers, so even if the encrypted object has weighted key servers,
+/// each derived key contributes only 1 towards the threshold.
 #[allow(unused_variable)]
 public fun decrypt(
     encrypted_object: &EncryptedObject,
@@ -94,6 +97,7 @@ public fun decrypt(
     } = encrypted_object;
     assert!(verified_derived_keys.length() >= *threshold as u64);
     assert!(verified_derived_keys.all!(|vdk| vdk.package_id == *package_id && vdk.id == *id));
+    assert_all_unique(&verified_derived_keys.map_ref!(|vdk| vdk.key_server));
 
     // Verify that the public keys are from the key servers in the encrypted object and in the same order.
     let public_keys = public_keys.zip_map_ref!(services, |pk, addr| {
@@ -101,7 +105,7 @@ public fun decrypt(
         pk.pk
     });
 
-    // Find the indices of the key servers corresponsing to the derived keys.
+    // Find the indices of the key servers corresponding to the derived keys.
     // This aborts if one of the given derived keys is not from a key server in the encrypted object.
     let given_indices = verified_derived_keys.map_ref!(
         |vdk| services.find_index!(|service| vdk.key_server.to_address() == service).extract(),
@@ -127,6 +131,10 @@ public fun decrypt(
         &randomness_key,
         encrypted_randomness,
     );
+    if (randomness.is_none()) {
+        return none()
+    };
+    let randomness = randomness.destroy_some();
 
     // Use the randomness to verify the nonce.
     if (!verify_nonce(&randomness, &encrypted_object.nonce)) {
@@ -161,13 +169,34 @@ public fun decrypt(
 fun decrypt_randomness(
     randomness_key: &vector<u8>,
     encrypted_randomness: &vector<u8>,
-): Element<Scalar> {
-    scalar_from_bytes(
+): Option<Element<Scalar>> {
+    safe_scalar_from_bytes(
         &xor(
             encrypted_randomness,
             randomness_key,
         ),
     )
+}
+
+/// The order of the scalar field for BLS12-381.
+const SCALAR_FIELD_ORDER: u256 =
+    52435875175126190479447740508185965837690552500527637822603658699938581184513u256;
+
+const SCALAR_BYTE_LENGTH: u64 = 32;
+
+/// Converts big-endian bytes to a scalar, returning none if the bytes are not a valid scalar.
+fun safe_scalar_from_bytes(be_bytes: &vector<u8>): Option<Element<Scalar>> {
+    if (be_bytes.length() != SCALAR_BYTE_LENGTH) {
+        return none()
+    };
+    // bcs peels in little-endian order, but the scalar is in big-endian order
+    let mut le_bytes = *be_bytes;
+    le_bytes.reverse();
+    let as_integer = sui::bcs::new(le_bytes).peel_u256();
+    if (as_integer >= SCALAR_FIELD_ORDER) {
+        return none()
+    };
+    option::some(scalar_from_bytes(be_bytes))
 }
 
 fun verify_nonce(randomness: &Element<Scalar>, nonce: &Element<G2>): bool {
@@ -179,12 +208,12 @@ fun verify_share(polynomials: &vector<Polynomial>, share: &vector<u8>, index: u8
 }
 
 /// Decrypt the given shares with the derived keys.
+/// Panics if the number of indices does not match the number of derived keys.
 fun decrypt_shares_with_derived_keys(
     indices: &vector<u64>,
     derived_keys: &vector<VerifiedDerivedKey>,
     encrypted_object: &EncryptedObject,
 ): vector<vector<u8>> {
-    assert!(indices.length() == derived_keys.length());
     let gid = hash_to_g1_with_dst(
         &create_full_id(encrypted_object.package_id, encrypted_object.id),
     );
@@ -294,6 +323,14 @@ fun verify_derived_key(
     pairing(derived_key, &g2_generator()) == pairing(gid, public_key)
 }
 
+fun assert_all_unique<T: drop + copy>(items: &vector<T>) {
+    let mut seen = vector::empty();
+    items.do_ref!(|item| {
+        assert!(seen.find_index!(|i| i == item).is_none());
+        seen.push_back(*item);
+    })
+}
+
 /// Deserialize a BCS encoded EncryptedObject.
 /// Fails if the version is not 0.
 /// Fails if the object is not a valid EncryptedObject.
@@ -315,6 +352,7 @@ public fun parse_encrypted_object(object: vector<u8>): EncryptedObject {
         service.peel_u8()
     });
     assert!(services.length() == indices.length());
+    assert_all_unique(&indices);
     let threshold = bcs.peel_u8();
     assert!(threshold > 0 && threshold <= indices.length() as u8);
 
@@ -457,6 +495,16 @@ fun test_parse_encrypted_object() {
             ),
     );
     assert!(object.mac == x"184b788b4f5168aff51c0e6da7e2970caa02386c4dc179666ef4c6296807cda9");
+}
+
+#[test]
+#[expected_failure]
+fun test_parse_encrypted_object_duplicate_indices_rejected() {
+    // a encoded object with duplicate indices [183, 183, 123]
+    let encoded =
+        x"00000000000000000000000000000000000000000000000000000000000000000020381dd9078c322a4663c392761a0211b527c127b29583851217f948d62131f40903034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96b7d726ecf6f7036ee3557cd6c7b93a49b231070e8eecada9cfa157e40e3f02e5d3b7dba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a977b02008812277be43199222d173eed91b480ce4c8cda5aea008ef884e77c990311136486a7daf8e2d99c0389ae40319714ffef1212ffcb456f0de08a7fa1bb185c936f9efe86fb5e32232d5e433230d04b1f2b27614b3b5b13f04db7d5c3b995e7e02e036315d5a9515d050595ea15b326ebcd510baf50463afd6517b5895d0756e39878bd656bd98418df11556d1ced740c7f839d97b81ee60238b3221fb45adfb0a5d1e4aec4f777271e5674bd7ded20421aa929755426501ba8366e465f5ebb861722b2909e5ac2e8608abd885014f2fb6006dd5896ab76ea243dea0d6d6ff4c3396b010de6062eb2dcb2f86bca32f83c9301200000000000000000000000000000000000000000000000000000000000000001184b788b4f5168aff51c0e6da7e2970caa02386c4dc179666ef4c6296807cda9";
+
+    let _ = parse_encrypted_object(encoded);
 }
 
 #[test]
@@ -731,7 +779,6 @@ fun test_decryption_too_few_shares() {
 }
 
 #[test]
-#[expected_failure(abort_code = sui::group_ops::EInvalidInput)]
 fun test_decryption_invalid_usk() {
     use sui::bls12381::g1_from_bytes;
 
@@ -796,7 +843,7 @@ fun test_decryption_invalid_usk() {
     );
 
     // Fails during decryption. In this case it fails since decryption of the randomness fails.
-    decrypt(&parsed_encrypted_object, &vdks, &all_pks);
+    assert!(decrypt(&parsed_encrypted_object, &vdks, &all_pks).is_none());
 }
 
 #[test]
@@ -843,4 +890,50 @@ fun test_decryption_from_sdk() {
 
     let decrypted = decrypt(&parsed_encrypted_object, &vdks, &pks);
     assert!(decrypted.borrow() == x"010203");
+}
+
+#[test]
+#[expected_failure]
+fun test_all_unique_failure() {
+    assert_all_unique(&vector[1, 2, 3, 1]);
+}
+
+#[test]
+fun test_all_unique_success() {
+    assert_all_unique(&vector[4, 1, 2, 3]);
+    assert_all_unique(&vector[1]);
+    assert_all_unique(&vector<u8>[]);
+}
+
+#[test]
+fun test_safe_scalar_from_bytes() {
+    // p - 1
+    let valid_bytes = x"73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000000";
+    assert!(safe_scalar_from_bytes(&valid_bytes).is_some());
+
+    // p
+    let invalid_bytes = x"73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001";
+    assert!(safe_scalar_from_bytes(&invalid_bytes).is_none());
+
+    // 0
+    let zero = x"0000000000000000000000000000000000000000000000000000000000000000";
+    assert!(safe_scalar_from_bytes(&zero).is_some_and!(|v| v == sui::bls12381::scalar_from_u64(0)));
+
+    // 7
+    let seven = x"0000000000000000000000000000000000000000000000000000000000000007";
+    assert!(
+        safe_scalar_from_bytes(&seven).is_some_and!(|v| v == sui::bls12381::scalar_from_u64(7)),
+    );
+
+    // 2^256 - 1
+    let invalid_bytes = x"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+    assert!(safe_scalar_from_bytes(&invalid_bytes).is_none());
+
+    // Short input
+    let short_bytes = x"73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF000000";
+    assert!(safe_scalar_from_bytes(&short_bytes).is_none());
+
+    // Short input
+    let long_bytes = x"73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF0000000000";
+    assert!(safe_scalar_from_bytes(&long_bytes).is_none());
 }
