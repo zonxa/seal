@@ -33,7 +33,7 @@ Access policies are written as Move modules on Sui. Examples include:
 - Time-locked decryption
 - Allowlist-based access
 
-See [Move patterns](https://github.com/MystenLabs/seal/tree/main/move/patterns/sources) for ready-to-use examples.
+See [Move patterns](https://github.com/MystenLabs/seal/tree/main/move/patterns/sources) for basic examples to help you get started.
 
 **4. Encrypt your data**
 
