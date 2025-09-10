@@ -26,6 +26,8 @@ There are a number of Web3 use cases that could utilize Seal to secure sensitive
 - Implement secure voting and MEV resilient trading in Move.
 - and more…
 
+Check out the [Getting Started Guide](./GettingStarted.md).
+
 ## Potential future capabilities
 
 We’re looking for community feedback on what other capabilities would make sense to add to Seal. Some options are:
@@ -45,8 +47,9 @@ Even though Seal is supposed to be a generic and flexible secret management serv
 ## Upgrade policy
 
 Seal strives to maintain backward compatibility. Any breaking changes to the Key Server API or the TypeScript SDK will be communicated in advance on both GitHub and in the Seal Discord channel.
-We will provide a clear migration path for existing users to upgrade to new versions.
-New versions of the Key Server will be published under [GitHub Releases](https://github.com/MystenLabs/seal/releases) and tagged with the appropriate version number.
+
+We will provide a clear migration path for existing users to upgrade to new versions. New versions of the Key Server will be published under [GitHub Releases](https://github.com/MystenLabs/seal/releases) and tagged with the appropriate version number.
+
 Both the [SDK](https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/src/key-server.ts#L31) and the [Key Server](https://github.com/MystenLabs/seal/blob/main/crates/key-server/src/server.rs#L85) are configured to expect specific versions from each other. Either component may reject messages from outdated or deprecated counterparties.
 
 ## Contact Us
