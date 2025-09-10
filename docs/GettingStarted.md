@@ -1,5 +1,10 @@
 # Getting Started
 
+!!! note
+    This guide is meant to help you quickly bootstrap with Seal. Before deploying your app to production or Mainnet, please review the full Seal documentation to understand the design, security best practices, and operational requirements.
+
+## Bootstrap your app
+
 Seal makes it simple to add decentralized encryption and programmable access control to your Web3 applications. Follow these steps to get started:
 
 **1. Install the Seal SDK**
@@ -73,7 +78,7 @@ const decryptedBytes = await client.decrypt({
 
 Learn more in [Decryption Guide](./UsingSeal.md#decryption).
 
-**Next steps**
+## Next steps
 
 - Read the [Seal Design](./Design.md) doc for a deeper understanding of how Seal works.
 - Explore example apps in the [Examples Directory](https://github.com/MystenLabs/seal/tree/main/examples).
