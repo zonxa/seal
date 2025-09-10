@@ -22,6 +22,7 @@ markdown_extensions:
       permalink_title: Anchor link to this section for reference
 nav:
   - Home: index.md
+  - Getting Started: GettingStarted.md
   - Seal Design: Design.md
   - Using Seal: UsingSeal.md
   - Security Best Practices: SecurityBestPractices.md
