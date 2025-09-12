@@ -17,6 +17,7 @@ pub enum Network {
     Mainnet,
     Custom {
         node_url: Option<String>,
+        use_default_mainnet_for_mvr: Option<bool>,
     },
     #[cfg(test)]
     TestCluster,
@@ -28,7 +29,7 @@ impl Network {
             Network::Devnet => "https://fullnode.devnet.sui.io:443".into(),
             Network::Testnet => "https://fullnode.testnet.sui.io:443".into(),
             Network::Mainnet => "https://fullnode.mainnet.sui.io:443".into(),
-            Network::Custom { node_url } => node_url
+            Network::Custom { node_url, .. } => node_url
                 .as_ref()
                 .expect("Custom network must have node_url set")
                 .clone(),
@@ -44,6 +45,7 @@ impl Network {
             "mainnet" => Network::Mainnet,
             "custom" => Network::Custom {
                 node_url: std::env::var("NODE_URL").ok(),
+                use_default_mainnet_for_mvr: None,
             },
             _ => panic!("Unknown network: {}", str),
         }
