@@ -126,6 +126,8 @@ If you use Walrus, attach a few metadata tags to each encrypted blob. These tags
 - Reconcile at any point whether you have encrypted all your required data.
 - Demonstrate encryption to your customers or auditors when needed.
 
+You can automate both tasks with the **Sui custom indexing framework** by indexing Walrus blob metadata and querying on the tags below. See the guide: [Index Walrus objects with a custom indexer](https://docs.sui.io/guides/developer/advanced/custom-indexer/indexer-walrus).
+
 Recommended tags when using Walrus:
 
 - `seal.encrypted` — Set to `true` to indicate a Seal-encrypted blob.
