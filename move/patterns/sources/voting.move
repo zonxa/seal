@@ -9,8 +9,7 @@
 ///
 /// This is an example of on-chain decryption. Other use cases of this include auctions, timelocked voting, etc.
 ///
-/// This pattern does NOT implement versioning, please see other patterns for
-/// examples of versioning.
+/// This pattern does NOT implement versioning, please see other patterns for examples of versioning.
 ///
 module patterns::voting;
 
@@ -29,14 +28,6 @@ const EInvalidVote: u64 = 1;
 const EVoteNotDone: u64 = 2;
 const EAlreadyFinalized: u64 = 3;
 const ENotEnoughKeys: u64 = 4;
-
-public struct VoteResult has drop, store {
-    tally: vector<u8>,
-}
-
-public fun tally(result: &VoteResult): &vector<u8> {
-    &result.tally
-}
 
 /// This represents a vote.
 public struct Vote has key {
@@ -61,6 +52,32 @@ public struct Vote has key {
 // The id of a vote is the id of the object.
 public fun id(v: &Vote): vector<u8> {
     object::id(v).to_bytes()
+}
+
+/// The result of a vote.
+public struct VoteResult has drop, store {
+    vote_id: address,
+    result: vector<u64>,
+}
+
+public fun votes_for_option(result: &VoteResult, option: u8): u64 {
+    result.result[option as u64]
+}
+
+public fun vote_id(result: &VoteResult): address {
+    result.vote_id
+}
+
+public fun winner(result: &VoteResult): u8 {
+    let (mut max_votes, mut option) = (0u64, 0u8);
+    result.result.length().do!(|i| {
+        let votes = result.result[i];
+        if (votes > max_votes) {
+            max_votes = votes;
+            option = i as u8;
+        };
+    });
+    option
 }
 
 #[test_only]
@@ -154,7 +171,7 @@ public fun finalize_vote(
 
     // This aborts if there are not enough keys or if they are invalid, e.g. if they were derived for a different purpose.
     // However, in case the keys are valid but some of the encrypted objects, aka the votes, are invalid, decrypt will just return none for these votes.
-    let mut tally: vector<u8> = vector::tabulate!(vote.options as u64, |_| 0u8);
+    let mut result = vector::tabulate!(vote.options as u64, |_| 0);
     vote
         .votes
         .do_ref!(
@@ -163,13 +180,13 @@ public fun finalize_vote(
                 .do_ref!(|decrypted| {
                     if (decrypted.length() == 1 && decrypted[0] < vote.options) {
                         let option = decrypted[0] as u64;
-                        *&mut tally[option] = tally[option] + 1;
+                        *&mut result[option] = result[option] + 1;
                     };
                 }),
         );
 
     vote.is_finalized = true;
-    VoteResult { tally }
+    VoteResult { vote_id: vote.id.to_address(), result }
 }
 
 #[test]
@@ -227,6 +244,8 @@ fun test_vote() {
         scenario.ctx(),
     );
 
+    let id = x"75c3360eb19fd2c20fbba5e2da8cf1a39cdb1ee913af3802ba330b852e459e05";
+
     // Vote on 1
     // cargo run --bin seal-cli encrypt-hmac --message 0x01 --aad 0x0000000000000000000000000000000000000000000000000000000000000001 --package-id 0x0 --id 0x75c3360eb19fd2c20fbba5e2da8cf1a39cdb1ee913af3802ba330b852e459e05 --threshold 2 a58bfa576a8efe2e2730bc664b3dbe70257d8e35106e4af7353d007dba092d722314a0aeb6bca5eed735466bbf471aef01e4da8d2efac13112c51d1411f6992b8604656ea2cf6a33ec10ce8468de20e1d7ecbfed8688a281d462f72a41602161 a9ce55cfa7009c3116ea29341151f3c40809b816f4ad29baa4f95c1bb23085ef02a46cf1ae5bd570d99b0c6e9faf525306224609300b09e422ae2722a17d2a969777d53db7b52092e4d12014da84bffb1e845c2510e26b3c259ede9e42603cd6 93b3220f4f3a46fb33074b590cda666c0ebc75c7157d2e6492c62b4aebc452c29f581361a836d1abcbe1386268a5685103d12dec04aadccaebfa46d4c92e2f2c0381b52d6f2474490d02280a9e9d8c889a3fce2753055e06033f39af86676651 -- 0x34401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96 0xd726ecf6f7036ee3557cd6c7b93a49b231070e8eecada9cfa157e40e3f02e5d3 0xdba72804cc9504a82bbaa13ed4a83a0e2c6219d7e45125cf57fd10cbab957a97
     scenario.next_tx(@0x1);
@@ -270,9 +289,11 @@ fun test_vote() {
         &vector[s0.id(), s1.id()],
     );
 
-    assert!(result.tally()[0] == 0);
-    assert!(result.tally()[1] == 2);
-    assert!(result.tally()[2] == 1);
+    assert!(result.vote_id().to_bytes() == id);
+    assert!(result.votes_for_option(0) == 0);
+    assert!(result.votes_for_option(1) == 2);
+    assert!(result.votes_for_option(2) == 1);
+    assert!(result.winner() == 1);
 
     // Clean up
     ks_destroy(s0);
