@@ -338,11 +338,10 @@ fun verify_derived_key(
 }
 
 fun assert_all_unique<T: drop + copy>(items: &vector<T>) {
-    let mut seen = vector::empty();
-    items.do_ref!(|item| {
-        assert!(seen.find_index!(|i| i == item).is_none());
-        seen.push_back(*item);
-    })
+    items.length().do!(|i| {
+        let (_, j) = items.index_of(&items[i]);
+        assert!(i == j);
+    });
 }
 
 /// Deserialize a BCS encoded EncryptedObject.
